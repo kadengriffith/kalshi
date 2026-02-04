@@ -31,7 +31,7 @@ python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py events-mve -
 python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py orderbook <TICKER>
 python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py trades <TICKER> --limit 50
 python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py market <TICKER>
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py size --price <0-1> --probability <0-1> --portfolio-value <DOLLARS> --kelly-fraction 0.3
+python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py size --price <0-1> --probability <0-1> --portfolio-value <DOLLARS> --kelly-fraction 0.3 --side <yes|no>
 
 # Trading
 python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py buy --ticker <TICKER> --side yes --count <N> --price <0-1>

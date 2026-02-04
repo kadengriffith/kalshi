@@ -9,7 +9,7 @@ Usage:
     kalshi.py markets [--status STATUS] [--series SERIES] [--event EVENT] [--tickers T1,T2] [--mve-filter only|exclude] [--min-close-ts TS] [--max-close-ts TS] [--min-created-ts TS] [--max-created-ts TS] [--min-updated-ts TS] [--min-settled-ts TS] [--max-settled-ts TS] [--min-volume N] [--resolve-soon DAYS] [--min-liquidity N] [--sort volume]
     kalshi.py search "query" [--min-volume N]
     kalshi.py market <TICKER>
-    kalshi.py size --price P --probability P --portfolio-value V [--kelly-fraction F]
+    kalshi.py size --price P --probability P --portfolio-value V [--kelly-fraction F] [--side yes|no]
     kalshi.py watchlist <add|remove|list|scan> [TICKER...]
     kalshi.py pnl
     kalshi.py events-mve [--series SERIES] [--collection COLLECTION] [--with-nested-markets] [--limit N]
@@ -589,15 +589,16 @@ def cmd_market(client, args):
 
 def cmd_size(client, args):
     price = args.price
-    prob = args.probability
+    prob_yes = args.probability
     portfolio_value = args.portfolio_value
     kelly_fraction = args.kelly_fraction
     max_position = args.max_position
+    side = args.side
 
     if price <= 0 or price >= 1:
         print("❌ Error: --price must be between 0 and 1 (exclusive).")
         return
-    if prob <= 0 or prob >= 1:
+    if prob_yes <= 0 or prob_yes >= 1:
         print("❌ Error: --probability must be between 0 and 1 (exclusive).")
         return
     if portfolio_value <= 0:
@@ -610,11 +611,18 @@ def cmd_size(client, args):
         print("❌ Error: --max-position must be > 0 and <= 1.")
         return
 
-    implied = price
-    edge = prob - implied
+    if side == "yes":
+        prob_side = prob_yes
+        implied_yes = price
+    else:
+        prob_side = 1 - prob_yes
+        implied_yes = 1 - price
+
+    implied_side = price
+    edge = prob_side - implied_side
 
     b = (1 - price) / price
-    p = prob
+    p = prob_side
     q = 1 - p
     kelly = (b * p - q) / b if b != 0 else 0
     position_fraction = kelly * kelly_fraction
@@ -624,15 +632,17 @@ def cmd_size(client, args):
         capped = True
     position_dollars = max(position_fraction * portfolio_value, 0)
     contracts = position_dollars / price if price > 0 else 0
-    ev_per_contract = (prob * 1.0 + (1 - prob) * 0.0) - price
+    ev_per_contract = (prob_side * 1.0 + (1 - prob_side) * 0.0) - price
     ev_roi = ev_per_contract / price if price > 0 else 0
     max_loss = price * contracts
 
     print("\n📐 Order Sizing")
     print("-" * 40)
-    print(f"Price (implied): {implied:.4f} ({implied*100:.2f}%)")
-    print(f"Your probability: {prob:.4f} ({prob*100:.2f}%)")
-    print(f"Edge: {edge:.4f} ({edge*100:.2f}%)")
+    print(f"Side: {side.upper()}")
+    print(f"Contract price: {implied_side:.4f} ({implied_side*100:.2f}%)")
+    print(f"Implied YES: {implied_yes:.4f} ({implied_yes*100:.2f}%)")
+    print(f"Your YES probability: {prob_yes:.4f} ({prob_yes*100:.2f}%)")
+    print(f"Edge on {side.upper()}: {edge:.4f} ({edge*100:.2f}%)")
     print(f"EV per contract: ${ev_per_contract:.4f}")
     print(f"Expected ROI: {ev_roi*100:.2f}%")
     print(f"Kelly fraction: {kelly:.4f}")
@@ -844,7 +854,11 @@ def cmd_buy(client, args):
         "type": "limit" if args.price else "market",
     }
     if args.price:
-        order_data["price"] = args.price
+        if args.price <= 0 or args.price >= 1:
+            print("❌ Error: --price must be between 0 and 1 (exclusive).")
+            return
+        price_key = "yes_price_dollars" if args.side == "yes" else "no_price_dollars"
+        order_data[price_key] = args.price
     
     result = client._request("POST", "/portfolio/orders", order_data)
     
@@ -867,7 +881,11 @@ def cmd_sell(client, args):
         "type": "limit" if args.price else "market",
     }
     if args.price:
-        order_data["price"] = args.price
+        if args.price <= 0 or args.price >= 1:
+            print("❌ Error: --price must be between 0 and 1 (exclusive).")
+            return
+        price_key = "yes_price_dollars" if args.side == "yes" else "no_price_dollars"
+        order_data[price_key] = args.price
     
     result = client._request("POST", "/portfolio/orders", order_data)
     
@@ -1125,7 +1143,8 @@ def main():
 
     p = subparsers.add_parser('size', help='Order sizing calculator')
     p.add_argument('--price', type=float, required=True, help='Market price in dollars (0-1)')
-    p.add_argument('--probability', type=float, required=True, help='Your probability estimate (0-1)')
+    p.add_argument('--probability', type=float, required=True, help='Your YES probability estimate (0-1)')
+    p.add_argument('--side', choices=['yes', 'no'], default='yes', help='Contract side to size (default: yes)')
     p.add_argument('--portfolio-value', type=float, required=True, help='Total portfolio value in dollars')
     p.add_argument('--kelly-fraction', type=float, default=0.3, help='Fraction of Kelly to use (default: 0.3)')
     p.add_argument('--max-position', type=float, help='Cap position fraction of portfolio (0-1)')

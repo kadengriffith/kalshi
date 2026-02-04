@@ -79,7 +79,7 @@ def main():
     run_cmd(["events", "--status", "open", "--limit", "5"])
     run_cmd(["events-mve", "--limit", "5"], allow_fail=True)
     run_cmd(["orders", "--stale-minutes", "120"])
-    run_cmd(["size", "--price", "0.55", "--probability", "0.70", "--portfolio-value", "1000", "--max-position", "0.2"])
+    run_cmd(["size", "--price", "0.55", "--probability", "0.70", "--portfolio-value", "1000", "--max-position", "0.2", "--side", "yes"])
     run_cmd(["pnl"])
 
     ticker = pick_demo_ticker()

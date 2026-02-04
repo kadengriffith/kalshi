@@ -142,9 +142,11 @@ python3 kalshi.py market KXTESLADELIVERYBY-27-500000
 python3 kalshi.py candlesticks TICKER --limit 50
 
 # Order sizing (Kelly fraction of 0.3 default)
-python3 kalshi.py size --price 0.55 --probability 0.70 --portfolio-value 1000
-python3 kalshi.py size --price 0.55 --probability 0.70 --portfolio-value 1000 --kelly-fraction 0.2
-python3 kalshi.py size --price 0.55 --probability 0.70 --portfolio-value 1000 --max-position 0.2
+python3 kalshi.py size --price 0.55 --probability 0.70 --portfolio-value 1000 --side yes
+python3 kalshi.py size --price 0.55 --probability 0.70 --portfolio-value 1000 --kelly-fraction 0.2 --side yes
+python3 kalshi.py size --price 0.55 --probability 0.70 --portfolio-value 1000 --max-position 0.2 --side yes
+
+Note: `--probability` is always your YES probability. Use `--side no` to size NO contracts; the tool converts internally.
 
 # See market metadata (check if MVE)
 python3 -c "
