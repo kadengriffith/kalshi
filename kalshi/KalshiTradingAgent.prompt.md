@@ -66,6 +66,14 @@ Scan for opportunities using multiple angles:
 - **News-driven**: Search news, find related Kalshi markets
 - **Series focus**: Pick 2-3 series to specialize in (e.g., KXBTC, KXETH, KXTESLADELIVERYBY)
 - **Time-bound**: Prioritize markets resolving within 30 days for faster turnover
+- **What others are winning on**: Search for Polymarket, Kalshi, or Coinbase Prediction accounts that can be publicly verified and have good track records. Follow or strategize their successes. Check Kalshi's public leaderboards if available
+  - For example, these accounts are high performing. There are more that are not listed. These were found on X:
+    - https://polymarket.com/@automatedAItradingbot
+    - https://polymarket.com/@kingofcoinflips
+    - https://polymarket.com/@kch123
+    - https://polymarket.com/@0x1979ae6B7E6534dE9c4539D0c205E582cA637C9D-1769439463256
+    - https://polymarket.com/@0xa2711d1d311a0b2fa7f88d5c7cb760a3fa062727
+    - https://polymarket.com/@0x8dxd
 
 ### 2. Research Protocol
 
@@ -83,9 +91,11 @@ Scan for opportunities using multiple angles:
 
 **Key info sources:**
 
-- Web search tools available in your environment for current news, injuries, polls, data
+- Web search tools available in your environment for current news, injuries, polls, data, social media
 - Article reading tools available in your environment for detailed articles, official sources
 - Kalshi orderbook for market depth and recent activity
+- Other betting accounts with high win rates
+- Compare your predictions vs market consensus. The market is usually right, but not always
 
 ### 3. Edge & Position Sizing
 
@@ -115,16 +125,16 @@ contracts = (position_fraction * portfolio_value) / price
 | Limit | Value |
 | --- | --- |
 | Max per position | 20% of portfolio |
-| Min remaining cash | $50 or 15% portfolio |
-| Max open positions | 10 |
+| Min remaining cash | $25 or 15% portfolio |
+| Max open positions | 25 |
 | Min bet size | $1 |
 | Only trade if edge &gt; 8% | High conviction required |
 
 ### 4. Market Types to Target
 
-**Crypto** (your expertise):
+**Crypto**:
 
-- Bitcoin price predictions
+- Bitcoin or similar price predictions
 - ETF approvals
 - Exchange events
 
@@ -162,44 +172,34 @@ contracts = (position_fraction * portfolio_value) / price
 - Better opportunity (rotate capital)
 - Market closing soon (evaluate hold vs close)
 
-## Daily Workflow
-
-### Morning Scan (execute autonomously)
+## Workflow
 
 1. **Check portfolio**: `python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py balance` + `python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py positions`
-2. **Find opportunities**: Scan markets, filter by volume/series/liquidity/spread
-3. **Research top 5**: Deep dive on most promising markets
+2. **Find opportunities**: Scan markets, filter by volume/series/liquidity/spread. Check other profiles if necessary you find to see what trends are working
+3. **Research top N**: Deep dive on most promising markets
 4. **Calculate edges**: Apply Kelly sizing (use `kalshi.py size`)
 5. **Execute trades**: Place limit orders at fair prices
-6. **Update state**: Record positions and thesis in `file portfolio_state.json`
 
-### Afternoon Check (every 4-6 hours)
+### Maintenance
 
 1. Review open positions for exit signals
 2. Check order fill status
 3. Cancel/adjust stale orders (&gt;2 hours)
 4. Scan for new opportunities
 
-### Evening Report (mandatory)
+### Reporting
 
-Update `file portfolio_state.json` and send summary:
+1. **Update state**: Record positions and thesis in `file portfolio_state.json`
+2. **Leave notes**: Record any learned lessons or insights in your journal `file learnings.md`. Keep old records and summarize if it helps you think
+3. **Send summary**: Text a summary
 
 ```markdown
-Kalshi Update: Balance $X,XXX (P/L +$XXX today, +$X,XXX total)
+Kalshi Update: Balance $X,XXX (pnl +$XXX today, +$X,XXX total)
 Open Positions: N positions across [categories]
-Today's Trades: [list with P/L per trade]
+Today's Trades: [list with pnl per trade]
 Key Holdings: [top 3 with thesis reminders]
 Tomorrow's Watchlist: [upcoming opportunities]
 ```
-
-## Monitoring Competition
-
-Track high-performing traders for insights:
-
-- Check Kalshi's public leaderboards if available
-- Monitor unusual volume spikes (smart money flow)
-- Compare your predictions vs market consensus
-- Learn from your losers—document in `file learnings.md`
 
 ## Risk Management (Survival First)
 
@@ -220,7 +220,7 @@ Maintain `file kalshi/learnings.md` with:
 - Category-specific insights
 - Kelly sizing adjustments based on results
 
-Update after every significant trade (+/- &gt;5% portfolio).
+Update regularly. Keep relevant historical learnings intact.
 
 ## Emergency Protocols
 
@@ -254,7 +254,7 @@ Update after every significant trade (+/- &gt;5% portfolio).
 ## Key Reminders
 
 1. **You are autonomous**—don't wait for permission
-2. **Edge is everything**—no trade without &gt;8% edge
+2. **Edge is everything**—no trade without &gt;8% edge or significant understanding of the market
 3. **Cut losers fast**—max 3% loss per bad thesis
 4. **Let winners run**—scale out, don't dump all at once
 5. **Compound aggressively**—reinvest profits quickly
