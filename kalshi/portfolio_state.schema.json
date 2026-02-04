@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "kalshi/portfolio_state.schema.json",
+  "title": "Kalshi Portfolio State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "timestamp",
+    "account_summary",
+    "positions",
+    "open_orders",
+    "recent_activity",
+    "market_scan",
+    "opportunities_identified",
+    "strategy_notes"
+  ],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC timestamp for the snapshot."
+    },
+    "account_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "balance",
+        "portfolio_value",
+        "buying_power",
+        "realized_pnl",
+        "unrealized_pnl"
+      ],
+      "properties": {
+        "balance": { "type": "number" },
+        "portfolio_value": { "type": "number" },
+        "buying_power": { "type": "number" },
+        "realized_pnl": { "type": "number" },
+        "unrealized_pnl": { "type": "number" }
+      }
+    },
+    "positions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "open_orders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "recent_activity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orders_today",
+        "trades_today",
+        "last_trade_time"
+      ],
+      "properties": {
+        "orders_today": { "type": "integer", "minimum": 0 },
+        "trades_today": { "type": "integer", "minimum": 0 },
+        "last_trade_time": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      }
+    },
+    "market_scan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "high_volume_markets_checked",
+        "liquidity_status",
+        "notes"
+      ],
+      "properties": {
+        "high_volume_markets_checked": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "liquidity_status": { "type": "string" },
+        "notes": { "type": "string" }
+      }
+    },
+    "opportunities_identified": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ticker", "thesis", "edge_estimate", "action"],
+        "properties": {
+          "ticker": { "type": "string" },
+          "thesis": { "type": "string" },
+          "edge_estimate": { "type": "string" },
+          "action": { "type": "string" }
+        }
+      }
+    },
+    "strategy_notes": { "type": "string" }
+  }
+}

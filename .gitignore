@@ -1,0 +1,6 @@
+.DS_Store
+kalshi/portfolio_state.json
+kalshi/watchlist.json
+.env
+!.env.example
+*.log
