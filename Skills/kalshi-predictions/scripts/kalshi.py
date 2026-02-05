@@ -4,26 +4,25 @@ Full-featured tool for market discovery and automated trading
 Follows official Kalshi API documentation
 
 Usage:
-    kalshi.py opportunities [--min-volume N] [--limit N]
-    kalshi.py hot [--limit N]
+    kalshi.py hot [--limit N]   (default: top 10 by volume)
     kalshi.py markets [--status STATUS] [--series SERIES] [--event EVENT] [--tickers T1,T2] [--mve-filter only|exclude] [--min-close-ts TS] [--max-close-ts TS] [--min-created-ts TS] [--max-created-ts TS] [--min-updated-ts TS] [--min-settled-ts TS] [--max-settled-ts TS] [--min-volume N] [--resolve-soon DAYS] [--min-liquidity N] [--sort volume]
-    kalshi.py search "query" [--min-volume N]
     kalshi.py market <TICKER>
     kalshi.py size --price P --probability P --portfolio-value V [--kelly-fraction F] [--side yes|no]
     kalshi.py watchlist <add|remove|list|scan> [TICKER...]
-    kalshi.py pnl
-    kalshi.py events-mve [--series SERIES] [--collection COLLECTION] [--with-nested-markets] [--limit N]
-    kalshi.py balance
+    kalshi.py account
+    kalshi.py series [--category C] [--tags T]
     kalshi.py positions
 """
 
-import os
-import sys
 import argparse
 import base64
 import json
-import requests
+import os
+import sys
 from datetime import datetime, timedelta, timezone
+
+import requests
+import yaml
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding as rsa_padding
 
@@ -35,44 +34,44 @@ DEMO_BASE_URL = "https://demo-api.kalshi.co/trade-api/v2"
 
 class KalshiClient:
     """Kalshi API Client with proper RSA-PSS signing"""
-    
+
     def __init__(self, use_demo: bool = False):
         self.api_key_id = os.environ.get("KALSHI_API_KEY_ID", "")
         self.private_key_pem = os.environ.get("KALSHI_PRIVATE_KEY", "")
         self.base_url = DEMO_BASE_URL if use_demo else PRODUCTION_BASE_URL
-        
+
         if not self.api_key_id or not self.private_key_pem:
             raise ValueError(
                 "Missing KALSHI_API_KEY_ID or KALSHI_PRIVATE_KEY environment variables"
             )
-        
+
         self._private_key = self._load_private_key()
-    
+
     def _load_private_key(self):
         """Load private key from PEM, handling PKCS#1 format with proper line wrapping"""
         pem = self.private_key_pem
-        
+
         # If the key is all on one line (from env var), format it properly
         if pem.count('\n') < 2:
             header = '-----BEGIN RSA PRIVATE KEY-----'
             footer = '-----END RSA PRIVATE KEY-----'
-            
+
             # Remove header/footer if present
             body = pem
             if header in body:
                 body = body.split(header)[1]
             if footer in body:
                 body = body.split(footer)[0]
-            
+
             # Clean up - remove all whitespace
             body = body.replace(' ', '').replace('\n', '').replace('\r', '')
-            
+
             # Reconstruct with proper line wrapping (64 chars per line)
             lines = [body[i:i+64] for i in range(0, len(body), 64)]
             pem = f"{header}\n" + "\n".join(lines) + f"\n{footer}\n"
-        
+
         return serialization.load_pem_private_key(pem.encode(), password=None)
-    
+
     def _sign_message(self, message: str) -> str:
         """Sign message with RSA-PSS using SHA256"""
         signature = self._private_key.sign(
@@ -84,7 +83,7 @@ class KalshiClient:
             hashes.SHA256()
         )
         return base64.b64encode(signature).decode()
-    
+
     def _request(self, method: str, path: str, body: dict = None) -> dict:
         """Make authenticated request to Kalshi API"""
         timestamp = str(int(datetime.now().timestamp() * 1000))
@@ -92,7 +91,7 @@ class KalshiClient:
         path_without_query = '/trade-api/v2' + path.split('?')[0]
         message = f"{timestamp}{method}{path_without_query}"
         signature = self._sign_message(message)
-        
+
         headers = {
             "KALSHI-ACCESS-KEY": self.api_key_id,
             "KALSHI-ACCESS-SIGNATURE": signature,
@@ -100,13 +99,13 @@ class KalshiClient:
         }
         if body:
             headers["Content-Type"] = "application/json"
-        
+
         url = f"{self.base_url}{path}"
         response = requests.request(method, url, headers=headers, json=body)
-        
+
         if response.status_code >= 400:
             raise Exception(f"API Error {response.status_code}: {response.text}")
-        
+
         return response.json() if response.text else {}
 
 
@@ -118,11 +117,11 @@ def _format_market_row(m, show_close=True):
     volume_24h = m.get('volume_24h', 0)
     close_time = m.get('close_time') or m.get('close_date')
     close_date = close_time[:10] if close_time else 'N/A'
-    
+
     # Handle MVE markets with long compound titles
     title = m.get('title', 'N/A')
     legs = m.get('mve_selected_legs', [])
-    
+
     if legs:
         # For MVE markets, show leg count instead of full title
         num_legs = len(legs)
@@ -134,12 +133,12 @@ def _format_market_row(m, show_close=True):
         if len(title) > 50:
             title = title[:47] + '...'
         title_display = title
-    
+
     # Truncate very long tickers
     ticker = m.get('ticker', 'N/A')
     if len(ticker) > 35:
         ticker = ticker[:32] + '...'
-    
+
     try:
         yes_ask_val = float(yes_ask)
     except (TypeError, ValueError):
@@ -148,13 +147,13 @@ def _format_market_row(m, show_close=True):
     row = f"{ticker} | {title_display} | ${yes_ask_val:.2f} | {volume:,.0f}"
     if show_close:
         row += f" | {close_date}"
-    
+
     # Highlight high-activity markets
     if volume_24h > 10000:
         row = f"🔥 {row}"
     elif volume_24h > 1000:
         row = f"📈 {row}"
-    
+
     return row
 
 
@@ -221,84 +220,59 @@ def _save_watchlist(path, tickers):
 
 
 # CLI Commands
-def cmd_opportunities(client, args):
-    """Find the best trading opportunities with smart filtering"""
-    # Lower default for MVE markets (most have < 500 volume)
-    min_vol = args.min_volume if args.min_volume is not None else 50
-    limit = args.limit or 30
-    
-    print("\n🔍 Finding trading opportunities...")
-    print(f"   Min Volume: {min_vol}")
-    print(f"   Max Results: {limit}")
-    print("   Note: Kalshi now uses MVE markets - see SKILL.md for details\n")
-    
-    # Fetch markets with generous limit
-    fetch_limit = max(limit * 10, 500)
-    params = {'status': 'open', 'limit': fetch_limit}
-    
-    query = '&'.join([f"{k}={v}" for k, v in params.items()])
-    data = client._request("GET", f"/markets?{query}")
-    markets = data.get('markets', [])
-    
-    # Filter for volume
-    filtered = [m for m in markets if (m.get('volume', 0) >= min_vol or m.get('volume_24h', 0) >= min_vol)]
-    
-    # Sort by 24h volume (most active first), fallback to total volume
-    filtered.sort(key=lambda x: (x.get('volume_24h', 0) or x.get('volume', 0)), reverse=True)
-    
-    if not filtered:
-        print("No markets found with sufficient volume.")
-        print(f"Try: python3 kalshi.py markets --status open --limit 300")
-        print(f"Then filter manually. Most MVE markets have 0-100 volume.")
-        return
-    
-    print(f"✅ Found {len(filtered)} opportunities:\n")
-    print(f"{'Ticker':<40} | {'Market':<50} | Ask | Volume | Close")
-    print("-" * 130)
-    
-    for m in filtered[:limit]:
-        print(_format_market_row(m))
-    
-    print(f"\n📊 Showing top {min(limit, len(filtered))} of {len(filtered)} markets")
-    print("💡 Always check orderbook before trading: kalshi.py orderbook TICKER")
-
-
 def cmd_hot(client, args):
-    """Show trending markets by 24h volume"""
-    print("\n🔥 Trending Markets (by 24h Volume)\n")
-    
-    # Fetch many markets
-    params = {'status': 'open', 'limit': 500}
-    query = '&'.join([f"{k}={v}" for k, v in params.items()])
-    data = client._request("GET", f"/markets?{query}")
-    markets = data.get('markets', [])
-    
-    # Sort by 24h volume
-    markets.sort(key=lambda x: x.get('volume_24h', 0) or 0, reverse=True)
-    
-    # Filter to only those with 24h volume
-    hot_markets = [m for m in markets if m.get('volume_24h', 0) > 0]
-    
+    limit = args.limit or 10
+    if args.category:
+        data = client._request("GET", f"/series?category={args.category}&include_volume=true")
+        series_list = data.get('series', [])
+        series_list = [s for s in series_list if s.get('ticker') and _series_volume(s) > 0]
+        series_list.sort(key=_series_volume, reverse=True)
+        series_tickers = [s.get('ticker') for s in series_list[:10]]
+        if not series_tickers:
+            print(f"No series with volume found for category: {args.category}")
+            return
+        markets = []
+        for st in series_tickers:
+            q = f"status=open&series_ticker={st}&limit=100&sort=volume"
+            page = client._request("GET", f"/markets?{q}")
+            markets.extend(page.get('markets', []))
+        seen = set()
+        deduped = []
+        for m in markets:
+            t = m.get('ticker')
+            if t and t not in seen:
+                seen.add(t)
+                deduped.append(m)
+        markets = deduped
+    else:
+        params = {'status': 'open', 'limit': 500, 'sort': 'volume'}
+        query = '&'.join([f"{k}={v}" for k, v in params.items()])
+        data = client._request("GET", f"/markets?{query}")
+        markets = data.get('markets', [])
+    markets = [m for m in markets if (m.get('volume') or 0) > 0]
+    markets.sort(key=lambda x: x.get('volume', 0) or 0, reverse=True)
+    hot_markets = markets[:limit]
     if not hot_markets:
-        print("⚠️  No markets with 24h volume found.")
-        print("\nThis is expected - Kalshi's MVE markets don't report 24h volume.")
-        print("Use this instead to find active markets:")
-        print("  python3 kalshi.py markets --status open --sort volume --limit 20")
-        print("\nOr find markets by total lifetime volume:")
-        print("  python3 kalshi.py opportunities --min-volume 50")
+        print("No open markets with volume found." + (f" (category: {args.category})" if args.category else ""))
         return
-    
-    print("Ticker | Title | Yes Ask | 24h Volume | Total Volume")
-    print("-" * 100)
-    
-    for m in hot_markets[:args.limit or 20]:
+    if getattr(args, 'yaml', False):
+        out = [{'ticker': m.get('ticker'), 'title': m.get('title'), 'yes_ask': m.get('yes_ask'), 'volume': m.get('volume')} for m in hot_markets]
+        print(yaml.dump(out, default_flow_style=False, sort_keys=False, allow_unicode=True))
+        return
+    if args.category:
+        title_line = f"\n🔥 Top {limit} Markets by Volume — {args.category}"
+    else:
+        title_line = f"\n🔥 Top {limit} Markets by Volume"
+    print(title_line + "\n")
+    print("Ticker | Title | Yes Ask | Volume")
+    print("-" * 95)
+    for m in hot_markets:
         yes_ask = m.get('yes_ask', 0)
-        vol_24h = m.get('volume_24h', 0)
         volume = m.get('volume', 0)
         title = m.get('title', 'N/A')
         if len(title) > 45:
             title = title[:42] + '...'
-        print(f"{m.get('ticker', 'N/A')} | {title} | ${yes_ask:.2f} | {vol_24h:,.0f} | {volume:,.0f}")
+        print(f"{m.get('ticker', 'N/A')} | {title} | ${yes_ask:.2f} | {volume:,.0f}")
 
 
 def cmd_markets(client, args):
@@ -317,7 +291,7 @@ def cmd_markets(client, args):
     if args.max_settled_ts: params['max_settled_ts'] = args.max_settled_ts
     if args.cursor: params['cursor'] = args.cursor
     if args.limit: params['limit'] = max(args.limit, 100)  # Ensure we fetch enough for filtering
-    
+
     if args.min_updated_ts:
         # Kalshi API does not allow other filters when min_updated_ts is provided
         # except mve_filter=exclude.
@@ -328,13 +302,13 @@ def cmd_markets(client, args):
 
     query = '&'.join([f"{k}={v}" for k, v in params.items()])
     path = f"/markets?{query}" if query else "/markets"
-    
-    print(f"\n📊 Fetching markets...")
+
+    print("\n📊 Fetching markets...")
     print()
-    
+
     data = client._request("GET", path)
     markets = data.get('markets', [])
-    
+
     filtered = markets
     if args.min_volume:
         filtered = [m for m in filtered if (m.get('volume') or 0) >= args.min_volume]
@@ -382,7 +356,7 @@ def cmd_markets(client, args):
             if liquidity >= args.min_liquidity:
                 next_filtered.append(m)
         filtered = next_filtered
-    
+
     if args.sort:
         if args.sort in ('yes_ask', 'yes_ask_dollars'):
             key_fn = lambda x: x.get('yes_ask_dollars', x.get('yes_ask', 0)) or 0
@@ -397,76 +371,34 @@ def cmd_markets(client, args):
         else:
             key_fn = lambda x: x.get(args.sort) or 0
         filtered.sort(key=key_fn, reverse=not args.no_desc)
-    
+
     if not filtered:
         print("No markets found matching criteria")
-        print(f"\n💡 Tip: Try without --min-volume to see all markets")
-        print(f"   Most markets have 0 volume. Try: --min-volume 10")
+        print("\n💡 Tip: Try without --min-volume to see all markets")
+        print("   Most markets have 0 volume. Try: --min-volume 10")
         return
-    
+    if getattr(args, 'yaml', False):
+        out = [{'ticker': m.get('ticker'), 'title': m.get('title'), 'yes_ask': m.get('yes_ask_dollars', m.get('yes_ask')), 'volume': m.get('volume'), 'close_time': m.get('close_time') or m.get('close_date')} for m in filtered[:args.limit or 50]]
+        print(yaml.dump(out, default_flow_style=False, sort_keys=False, allow_unicode=True))
+        return
     print(f"✅ Found {len(filtered)} markets:\n")
     print(f"{'Ticker':<40} | {'Market':<50} | Ask | Volume | Close")
     print("-" * 130)
-    
+
     for m in filtered[:args.limit or 50]:
         print(_format_market_row(m))
-    
+
     # Summary stats
     mve_count = sum(1 for m in filtered if 'mve_collection_ticker' in m)
     if mve_count > 0:
         print(f"\n📊 {mve_count} of {len(filtered)} are MVE markets")
 
 
-def cmd_search(client, args):
-    print(f"\n🔍 Searching for '{args.query}'...")
-    
-    # Fetch many markets to search through
-    fetch_limit = max(args.limit * 10, 300)
-    data = client._request("GET", f"/markets?status={args.status or 'open'}&limit={fetch_limit}")
-    markets = data.get('markets', [])
-    
-    # Parse query (support OR/AND)
-    query_lower = args.query.lower()
-    terms = [t.strip() for t in query_lower.replace(' or ', '|').split('|')]
-    
-    filtered = []
-    for m in markets:
-        text = f"{m.get('title', '')} {m.get('ticker', '')} {m.get('category', '')}".lower()
-        if any(term in text for term in terms):
-            filtered.append(m)
-    
-    if args.min_volume:
-        filtered = [m for m in filtered if (m.get('volume') or 0) >= args.min_volume]
-    
-    if args.sort == 'volume':
-        filtered.sort(key=lambda x: x.get('volume') or 0, reverse=True)
-    elif args.sort == 'volume_24h':
-        filtered.sort(key=lambda x: x.get('volume_24h') or 0, reverse=True)
-    
-    if not filtered:
-        print(f"\nNo markets found matching '{args.query}'")
-        print(f"Searched {len(markets)} markets. Try:")
-        print(f"  - Broader query (e.g., 'NBA' instead of 'Celtics Lakers')")
-        print(f"  - Increase --limit (currently searched {fetch_limit})")
-        print(f"  - Check SKILL.md for MVE market search tips")
-        return
-    
-    print(f"\n✅ Found {len(filtered)} markets matching '{args.query}':\n")
-    print(f"{'Ticker':<40} | {'Market':<50} | Ask | Volume")
-    print("-" * 115)
-    
-    for m in filtered[:args.limit or 30]:
-        print(_format_market_row(m, show_close=False))
-    
-    if len(filtered) > (args.limit or 30):
-        print(f"\n... and {len(filtered) - (args.limit or 30)} more")
-
-
 def cmd_categories(client, args):
     data = client._request("GET", "/series")
     series = data.get('series', [])
     categories = set(s.get('category') for s in series if s.get('category'))
-    
+
     print("\n📂 Available Categories:")
     print("-" * 50)
     print("⚠️  NOTE: Categories only work for non-MVE markets")
@@ -475,7 +407,20 @@ def cmd_categories(client, args):
     for cat in sorted(categories):
         count = sum(1 for s in series if s.get('category') == cat)
         print(f"• {cat} ({count} series)")
-    print("\n💡 For MVE markets, use: python3 kalshi.py search \"<keyword>\"")
+    print("\n💡 Use hot --category X or markets --series TICKER for discovery.")
+
+
+def _series_volume(s):
+    v = s.get('volume')
+    if v is not None:
+        return v
+    v = s.get('volume_fp')
+    if v is not None:
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return 0
+    return 0
 
 
 def cmd_series(client, args):
@@ -483,80 +428,53 @@ def cmd_series(client, args):
     if args.category: params['category'] = args.category
     if args.tags: params['tags'] = args.tags
     if args.include_product_metadata: params['include_product_metadata'] = 'true'
-    if args.include_volume: params['include_volume'] = 'true'
+    need_volume = args.sort in ('volume', 'both') or args.include_volume
+    if need_volume: params['include_volume'] = 'true'
 
     query = '&'.join([f"{k}={v}" for k, v in params.items()])
     path = f"/series?{query}" if query else "/series"
 
     data = client._request("GET", path)
     series = data.get('series', [])
-    
+    if args.categories_only:
+        categories = sorted(set(s.get('category') for s in series if s.get('category')))
+        for cat in categories:
+            print(cat)
+        return
+    show_volume = need_volume
+    if show_volume:
+        series = [s for s in series if _series_volume(s) > 0]
+
+    if args.sort == 'volume':
+        series = sorted(series, key=_series_volume, reverse=True)
+    elif args.sort == 'category':
+        series = sorted(series, key=lambda s: (s.get('category') or ''))
+    elif args.sort == 'both':
+        series = sorted(series, key=lambda s: ((s.get('category') or ''), -_series_volume(s)))
+
+    if getattr(args, 'yaml', False):
+        out = [{'ticker': s.get('ticker'), 'category': s.get('category'), 'title': s.get('title'), **({'volume': s.get('volume') or s.get('volume_fp')} if show_volume else {})} for s in series]
+        print(yaml.dump(out, default_flow_style=False, sort_keys=False, allow_unicode=True))
+        return
     print("\n📚 Available Series:")
-    print("-" * 80)
-    print("Ticker | Category | Title")
-    print("-" * 80)
-    
-    for s in series[:50]:
+    print("-" * (95 if show_volume else 80))
+    header = "Ticker | Category | Title"
+    if show_volume:
+        header += " | Volume"
+    print(header)
+    print("-" * (95 if show_volume else 80))
+
+    for s in series:
         title = s.get('title', 'N/A')
         if len(title) > 45:
             title = title[:42] + '...'
-        print(f"{s.get('ticker', 'N/A')} | {s.get('category', 'N/A')} | {title}")
-    
-    if len(series) > 50:
-        print(f"\n... and {len(series) - 50} more series")
-
-
-def cmd_events(client, args):
-    params = {'status': args.status or 'open'}
-    if args.limit: params['limit'] = args.limit
-    if args.with_nested_markets: params['with_nested_markets'] = 'true'
-    if args.with_milestones: params['with_milestones'] = 'true'
-    if args.series: params['series_ticker'] = args.series
-    if args.min_close_ts: params['min_close_ts'] = args.min_close_ts
-    if args.cursor: params['cursor'] = args.cursor
-    
-    query = '&'.join([f"{k}={v}" for k, v in params.items()])
-    data = client._request("GET", f"/events?{query}")
-    events = data.get('events', [])
-    
-    print(f"\n📅 {len(events)} Events:\n")
-    print("Ticker | Category | Markets | Title")
-    print("-" * 90)
-    
-    # Sort by number of markets (most interesting first)
-    events.sort(key=lambda x: x.get('markets_count', 0), reverse=True)
-    
-    for e in events[:args.limit or 30]:
-        title = e.get('title', 'N/A')
-        if len(title) > 40:
-            title = title[:37] + '...'
-        print(f"{e.get('ticker', 'N/A')} | {e.get('category', 'N/A')} | {e.get('markets_count', 0)} | {title}")
-
-
-def cmd_events_mve(client, args):
-    if args.series and args.collection:
-        print("❌ Error: Use only one of --series or --collection for MVE events.")
-        return
-    params = {}
-    if args.series: params['series_ticker'] = args.series
-    if args.collection: params['collection_ticker'] = args.collection
-    if args.with_nested_markets: params['with_nested_markets'] = 'true'
-    if args.limit: params['limit'] = args.limit
-    if args.cursor: params['cursor'] = args.cursor
-
-    query = '&'.join([f"{k}={v}" for k, v in params.items()])
-    data = client._request("GET", f"/events/multivariate?{query}" if query else "/events/multivariate")
-    events = data.get('events', [])
-
-    print(f"\n🧩 {len(events)} MVE Events:\n")
-    print("Ticker | Series | Markets | Title")
-    print("-" * 90)
-
-    for e in events[:args.limit or 30]:
-        title = e.get('title', 'N/A')
-        if len(title) > 40:
-            title = title[:37] + '...'
-        print(f"{e.get('ticker', 'N/A')} | {e.get('series_ticker', 'N/A')} | {e.get('markets_count', 0)} | {title}")
+        row = f"{s.get('ticker', 'N/A')} | {s.get('category', 'N/A')} | {title}"
+        if show_volume:
+            vol = s.get('volume')
+            if vol is None:
+                vol = s.get('volume_fp', 'N/A')
+            row += f" | {vol}"
+        print(row)
 
 
 def cmd_market(client, args):
@@ -706,7 +624,7 @@ def cmd_watchlist(client, args):
 
 def cmd_orderbook(client, args):
     book = client._request("GET", f"/markets/{args.ticker}/orderbook")
-    
+
     # Try to get market details
     try:
         market_data = client._request("GET", f"/markets/{args.ticker}")
@@ -716,10 +634,10 @@ def cmd_orderbook(client, args):
             market = market_data
     except:
         market = {'title': 'N/A'}
-    
+
     print(f"\n📖 Orderbook: {market.get('title', 'N/A')}")
     print(f"Ticker: {args.ticker}")
-    
+
     # Show MVE info if applicable
     legs = market.get('mve_selected_legs', [])
     if legs:
@@ -728,12 +646,12 @@ def cmd_orderbook(client, args):
             print(f"   {i}. {leg['side'].upper()} on {leg['market_ticker']}")
         if len(legs) > 5:
             print(f"   ... and {len(legs) - 5} more legs")
-    
+
     print("-" * 60)
-    
+
     yes_bids = book.get('orderbook', {}).get('yes', book.get('yes_bids', []))
     no_bids = book.get('orderbook', {}).get('no', book.get('no_bids', []))
-    
+
     print("\n🟢 YES Orders (Buy YES / Sell NO):")
     print("Price | Count")
     print("-" * 30)
@@ -755,7 +673,7 @@ def cmd_orderbook(client, args):
             print(f"${_price_to_dollars(price):.2f} | {count}")
     else:
         print("No YES orders available")
-    
+
     print("\n🔴 NO Orders (Buy NO / Sell YES):")
     print("Price | Count")
     print("-" * 30)
@@ -770,11 +688,11 @@ def cmd_orderbook(client, args):
             print(f"${_price_to_dollars(price):.2f} | {count}")
     else:
         print("No NO orders available")
-    
+
     # Market summary - handle both string and numeric values
     yes_ask = market.get('yes_ask_dollars', market.get('yes_ask', 0))
     yes_bid = market.get('yes_bid_dollars', market.get('yes_bid', 0))
-    
+
     try:
         yes_ask_val = float(yes_ask)
     except (TypeError, ValueError):
@@ -783,14 +701,14 @@ def cmd_orderbook(client, args):
         yes_bid_val = float(yes_bid)
     except (TypeError, ValueError):
         yes_bid_val = 0.0
-    
+
     volume = market.get('volume', 0)
-    
-    print(f"\n📊 Market Summary:")
+
+    print("\n📊 Market Summary:")
     print(f"   Yes Ask: ${yes_ask_val:.2f}")
     print(f"   Yes Bid: ${yes_bid_val:.2f}")
     print(f"   Volume: {volume:,}")
-    
+
     # Liquidity warning
     if yes_ask_val >= 1.0 and yes_bid_val <= 0:
         print("\n⚠️  WARNING: No liquidity - Ask is $1.00, Bid is $0.00")
@@ -801,24 +719,24 @@ def cmd_candlesticks(client, args):
     """Get candlestick/price history for a market"""
     data = client._request("GET", f"/markets/{args.ticker}/candlesticks?limit={args.limit or 100}")
     candles = data.get('candlesticks', [])
-    
+
     # Try to get market details
     try:
         market_data = client._request("GET", f"/markets/{args.ticker}")
         market = market_data.get('market', market_data)
     except:
         market = {'title': 'N/A'}
-    
+
     print(f"\n📊 Price History: {market.get('title', 'N/A')}")
     print(f"Ticker: {args.ticker}\n")
-    
+
     if not candles:
         print("No price history available for this market.")
         return
-    
+
     print("Time | Open | High | Low | Close | Volume")
     print("-" * 70)
-    
+
     for c in candles[-20:]:  # Show last 20
         time = c.get('time', 'N/A')[:16] if c.get('time') else 'N/A'
         open_p = c.get('open_price', 0)
@@ -832,15 +750,15 @@ def cmd_candlesticks(client, args):
 def cmd_trades(client, args):
     data = client._request("GET", f"/markets/{args.ticker}/trades?limit={args.limit or 20}")
     trades = data.get('trades', [])
-    
+
     print(f"\n💰 Recent Trades for {args.ticker}:\n")
     print("Time | Side | Price | Count")
     print("-" * 50)
-    
+
     if not trades:
         print("No trades found for this market.")
         return
-    
+
     for t in trades:
         print(f"{t.get('created_at', 'N/A')[:19]} | {t.get('side', 'N/A')} | ${t.get('price', 0):.2f} | {t.get('count', 0)}")
 
@@ -859,16 +777,16 @@ def cmd_buy(client, args):
             return
         price_key = "yes_price_dollars" if args.side == "yes" else "no_price_dollars"
         order_data[price_key] = args.price
-    
+
     result = client._request("POST", "/portfolio/orders", order_data)
-    
-    print(f"\n✅ BUY order placed!")
+
+    print("\n✅ BUY order placed!")
     print(f"Order ID: {result.get('order_id', 'N/A')}")
     print(f"Ticker: {args.ticker} | Side: {args.side.upper()} | Count: {args.count}")
     if args.price:
         print(f"Price: ${args.price}")
-    
-    print(f"\n💡 Check orderbook before placing orders:")
+
+    print("\n💡 Check orderbook before placing orders:")
     print(f"   python3 kalshi.py orderbook {args.ticker}")
 
 
@@ -886,10 +804,10 @@ def cmd_sell(client, args):
             return
         price_key = "yes_price_dollars" if args.side == "yes" else "no_price_dollars"
         order_data[price_key] = args.price
-    
+
     result = client._request("POST", "/portfolio/orders", order_data)
-    
-    print(f"\n✅ SELL order placed!")
+
+    print("\n✅ SELL order placed!")
     print(f"Order ID: {result.get('order_id', 'N/A')}")
     print(f"Ticker: {args.ticker} | Side: {args.side.upper()} | Count: {args.count}")
     if args.price:
@@ -899,10 +817,10 @@ def cmd_sell(client, args):
 def cmd_orders(client, args):
     params = {}
     if args.status: params['status'] = args.status
-    
+
     query = '&'.join([f"{k}={v}" for k, v in params.items()])
     path = f"/portfolio/orders?{query}" if query else "/portfolio/orders"
-    
+
     data = client._request("GET", path)
     orders = data.get('orders', [])
 
@@ -919,19 +837,31 @@ def cmd_orders(client, args):
             if dt and dt <= cutoff:
                 next_orders.append(o)
         orders = next_orders
-    
+
     if not orders:
         print("\nNo orders found")
         return
-    
+
     print(f"\n📋 {len(orders)} Orders:\n")
     print("ID | Ticker | Side | Action | Count | Price | Status")
     print("-" * 100)
-    
+
     for o in orders[:args.limit or 50]:
         oid = o.get('order_id', 'N/A')[:8] + "..."
-        price = f"${o.get('price', 0):.2f}" if o.get('price') else "MARKET"
-        print(f"{oid} | {o.get('ticker', 'N/A')} | {o.get('side', 'N/A')} | {o.get('action', 'N/A')} | {o.get('count', 0)} | {price} | {o.get('status', 'N/A')}")
+        side = (o.get('side') or '').lower()
+        price_val = o.get('yes_price_dollars') if side == 'yes' else o.get('no_price_dollars')
+        if price_val is None:
+            price_val = o.get('yes_price_dollars') or o.get('no_price_dollars')
+        if price_val is not None and str(price_val).strip() != '':
+            try:
+                p = float(price_val)
+                price = f"${p:.2f}"
+            except (TypeError, ValueError):
+                price = "MARKET"
+        else:
+            price = "MARKET"
+        count = o.get('remaining_count', o.get('count', 0))
+        print(f"{oid} | {o.get('ticker', 'N/A')} | {o.get('side', 'N/A')} | {o.get('action', 'N/A')} | {count} | {price} | {o.get('status', 'N/A')}")
 
     if args.cancel_stale:
         cancelled = 0
@@ -976,11 +906,11 @@ def cmd_positions(client, args):
                 close_info[ticker] = close_time
                 next_positions.append(p)
         positions = next_positions
-    
+
     if not positions:
         print("\n📭 No open positions")
         return
-    
+
     print(f"\n📈 {len(positions)} Open Positions:\n")
     if args.close_soon is not None:
         print("Ticker | Position | Avg Entry | Mark | Unrealized P&L | Close")
@@ -988,7 +918,7 @@ def cmd_positions(client, args):
     else:
         print("Ticker | Position | Avg Entry | Mark | Unrealized P&L")
         print("-" * 90)
-    
+
     total_pnl = 0
     for p in positions:
         unrealized = p.get('unrealized_pnl', 0)
@@ -999,42 +929,18 @@ def cmd_positions(client, args):
             print(f"{p.get('ticker', 'N/A')} | {p.get('position', 0)} | ${p.get('avg_entry_price', 0):.2f} | ${p.get('mark_price', 0):.2f} | {pnl_str} | {close_time}")
         else:
             print(f"{p.get('ticker', 'N/A')} | {p.get('position', 0)} | ${p.get('avg_entry_price', 0):.2f} | ${p.get('mark_price', 0):.2f} | {pnl_str}")
-    
+
     print("-" * 120 if args.close_soon is not None else "-" * 90)
     total_str = f"+${total_pnl:.2f}" if total_pnl >= 0 else f"-${abs(total_pnl):.2f}"
     print(f"Total Unrealized P&L: {total_str}")
 
 
-def cmd_balance(client, args):
-    """Check account balance (values returned in cents)"""
-    data = client._request("GET", "/portfolio/balance")
-    
-    # Kalshi API returns values in cents - convert to dollars
-    balance_cents = data.get('balance', 0)
-    portfolio_cents = data.get('portfolio_value', 0)
-    unsettled_cents = data.get('unsettled_amount', 0)
-    deposit_cents = data.get('available_for_deposit', 0)
-    
-    balance_dollars = balance_cents / 100
-    portfolio_dollars = portfolio_cents / 100
-    unsettled_dollars = unsettled_cents / 100
-    deposit_dollars = deposit_cents / 100
-    
-    print("\n💰 Account Balance")
-    print("-" * 40)
-    print(f"Balance: ${balance_dollars:,.2f}")
-    print(f"Portfolio Value: ${portfolio_dollars:,.2f}")
-    print(f"Buying Power: ${(balance_dollars - portfolio_dollars):,.2f}")
-    if unsettled_cents > 0:
-        print(f"Unsettled: ${unsettled_dollars:,.2f}")
-    if deposit_cents > 0:
-        print(f"Available for Withdrawal: ${deposit_dollars:,.2f}")
-
-
-def cmd_pnl(client, args):
+def cmd_account(client, args):
     data = client._request("GET", "/portfolio/balance")
     positions_data = client._request("GET", "/portfolio/positions")
     positions = positions_data.get('positions', [])
+    orders_data = client._request("GET", "/portfolio/orders?status=resting&limit=1000")
+    open_orders = orders_data.get('orders', [])
 
     balance = data.get('balance', 0) / 100
     portfolio_value = data.get('portfolio_value', 0) / 100
@@ -1050,6 +956,7 @@ def cmd_pnl(client, args):
     print(f"Portfolio Value: ${portfolio_value:,.2f}")
     print(f"Buying Power: ${buying_power:,.2f}")
     print(f"Open Positions: {len(positions)}")
+    print(f"Open Orders: {len(open_orders)}")
     print(f"Unrealized P&L: ${total_unrealized:,.2f}")
 
 
@@ -1057,16 +964,13 @@ def main():
     parser = argparse.ArgumentParser(description="Kalshi Prediction Markets CLI")
     parser.add_argument('--demo', action='store_true', help='Use demo environment')
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
-    
-    # Opportunities
-    p = subparsers.add_parser('opportunities', help='Find markets with volume (accounts for MVE markets)')
-    p.add_argument('--min-volume', type=int, help='Minimum volume threshold (default: 50)')
-    p.add_argument('--limit', type=int, default=30, help='Max results to show')
-    
+
     # Hot
-    p = subparsers.add_parser('hot', help='Show trending markets (may be empty for MVE)')
-    p.add_argument('--limit', type=int, default=20, help='Number of markets to show')
-    
+    p = subparsers.add_parser('hot', help='Top markets by volume')
+    p.add_argument('--limit', type=int, default=10, help='Number of markets to show')
+    p.add_argument('--category', help='Limit to series in this category')
+    p.add_argument('--yaml', action='store_true', help='Output as YAML')
+
     # Markets
     p = subparsers.add_parser('markets', help='List markets with filters')
     p.add_argument('--status', choices=['unopened', 'open', 'closed', 'settled'], default='open')
@@ -1093,47 +997,28 @@ def main():
     p.add_argument('--no-desc', action='store_true')
     p.add_argument('--limit', type=int, default=50)
     p.add_argument('--cursor', help='Pagination cursor from API')
-    
-    # Search
-    p = subparsers.add_parser('search', help='Search markets by keyword')
-    p.add_argument('query')
-    p.add_argument('--status', default='open')
-    p.add_argument('--min-volume', type=int)
-    p.add_argument('--sort', default='volume')
-    p.add_argument('--limit', type=int, default=30)
-    
+    p.add_argument('--yaml', action='store_true', help='Output as YAML')
+
     # Other commands
     p = subparsers.add_parser('categories', help='Show available categories (limited for MVE)')
-    
+
     p = subparsers.add_parser('series', help='List market series')
     p.add_argument('--category')
     p.add_argument('--tags', help='Comma-separated list of tags')
     p.add_argument('--include-product-metadata', action='store_true')
     p.add_argument('--include-volume', action='store_true')
-    
-    p = subparsers.add_parser('events', help='List events')
-    p.add_argument('--status', default='open', choices=['open', 'closed', 'settled'])
-    p.add_argument('--limit', type=int, default=30)
-    p.add_argument('--with-nested-markets', action='store_true')
-    p.add_argument('--with-milestones', action='store_true')
-    p.add_argument('--series', help='Filter by series_ticker')
-    p.add_argument('--min-close-ts', type=int, help='Unix timestamp (seconds)')
-    p.add_argument('--cursor', help='Pagination cursor from API')
+    p.add_argument('--sort', choices=['volume', 'category', 'both'], default='category',
+                    help='Sort by volume (desc), category, or both (category then volume desc)')
+    p.add_argument('--categories-only', action='store_true', help='Output unique category names only')
+    p.add_argument('--yaml', action='store_true', help='Output as YAML')
 
-    p = subparsers.add_parser('events-mve', help='List multivariate events')
-    p.add_argument('--series', help='Filter by series_ticker')
-    p.add_argument('--collection', help='Filter by collection_ticker')
-    p.add_argument('--with-nested-markets', action='store_true')
-    p.add_argument('--limit', type=int, default=30)
-    p.add_argument('--cursor', help='Pagination cursor from API')
-    
     p = subparsers.add_parser('orderbook', help='View order book with MVE leg info')
     p.add_argument('ticker')
-    
+
     p = subparsers.add_parser('candlesticks', help='Get price history')
     p.add_argument('ticker')
     p.add_argument('--limit', type=int, default=100)
-    
+
     p = subparsers.add_parser('trades', help='Recent trades')
     p.add_argument('ticker')
     p.add_argument('--limit', type=int, default=20)
@@ -1148,37 +1033,36 @@ def main():
     p.add_argument('--portfolio-value', type=float, required=True, help='Total portfolio value in dollars')
     p.add_argument('--kelly-fraction', type=float, default=0.3, help='Fraction of Kelly to use (default: 0.3)')
     p.add_argument('--max-position', type=float, help='Cap position fraction of portfolio (0-1)')
-    
+
     p = subparsers.add_parser('buy', help='Place buy order')
     p.add_argument('--ticker', required=True)
     p.add_argument('--side', required=True, choices=['yes', 'no'])
     p.add_argument('--count', required=True, type=int)
     p.add_argument('--price', type=float, help='Limit price in dollars (omit for market order)')
-    
+
     p = subparsers.add_parser('sell', help='Place sell order')
     p.add_argument('--ticker', required=True)
     p.add_argument('--side', required=True, choices=['yes', 'no'])
     p.add_argument('--count', required=True, type=int)
     p.add_argument('--price', type=float, help='Limit price in dollars (omit for market order)')
-    
+
     p = subparsers.add_parser('orders', help='List orders')
     p.add_argument('--status')
     p.add_argument('--limit', type=int, default=50)
     p.add_argument('--stale-minutes', type=int, help='Only show orders older than N minutes')
     p.add_argument('--cancel-stale', action='store_true', help='Cancel orders selected by --stale-minutes')
-    
+
     p = subparsers.add_parser('cancel', help='Cancel order')
     p.add_argument('order_id')
-    
+
     p = subparsers.add_parser('positions', help='View positions')
     p.add_argument('--close-soon', type=int, help='Only show positions closing within N days')
-    subparsers.add_parser('balance', help='Check balance')
-    subparsers.add_parser('pnl', help='P&L snapshot')
+    subparsers.add_parser('account', help='Account snapshot (balance, positions, P&L)')
 
     p = subparsers.add_parser('watchlist', help='Manage watchlist')
     p.add_argument('action', choices=['add', 'remove', 'list', 'scan'])
     p.add_argument('tickers', nargs='*')
-    
+
     parsed = parser.parse_args()
     if not parsed.command:
         parser.print_help()
@@ -1187,7 +1071,7 @@ def main():
 
     if parsed.demo:
         print("-- USING DEMO API --")
-    
+
     try:
         client = KalshiClient(use_demo=parsed.demo)
     except ValueError as e:
@@ -1197,29 +1081,24 @@ def main():
         print("  export KALSHI_PRIVATE_KEY='your-private-key'")
         print("\nOr add them in [Settings > Developers](/?t=settings&s=developers)")
         sys.exit(1)
-    
+
     try:
         cmds = {
-            'opportunities': cmd_opportunities,
             'hot': cmd_hot,
-            'markets': cmd_markets, 
-            'search': cmd_search, 
+            'markets': cmd_markets,
             'categories': cmd_categories,
-            'series': cmd_series, 
-            'events': cmd_events, 
-            'events-mve': cmd_events_mve,
+            'series': cmd_series,
             'market': cmd_market,
             'size': cmd_size,
             'orderbook': cmd_orderbook,
             'candlesticks': cmd_candlesticks,
-            'trades': cmd_trades, 
-            'buy': cmd_buy, 
-            'sell': cmd_sell, 
+            'trades': cmd_trades,
+            'buy': cmd_buy,
+            'sell': cmd_sell,
             'orders': cmd_orders,
-            'cancel': cmd_cancel, 
-            'positions': cmd_positions, 
-            'balance': cmd_balance,
-            'pnl': cmd_pnl,
+            'cancel': cmd_cancel,
+            'positions': cmd_positions,
+            'account': cmd_account,
             'watchlist': cmd_watchlist,
         }
         cmds[parsed.command](client, parsed)

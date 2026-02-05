@@ -28,7 +28,7 @@ export KALSHI_PRIVATE_KEY='your-private-key'
 python3 -m pip install --user cryptography requests
 
 # Test connection
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py balance
+python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py account
 
 # QUICK: Find liquid markets (use these series - they're proven)
 python3 kalshi.py markets --series KXTESLADELIVERYBY --min-volume 100 --sort volume
@@ -52,7 +52,7 @@ Add these in [Settings > Developers](/?t=settings&s=developers).
 Install required Python packages:
 
 ```bash
-python3 -m pip install --user cryptography requests
+python3 -m pip install --user cryptography requests pyyaml
 ```
 
 ## 🎯 TL;DR: Finding Markets That Actually Trade
@@ -92,15 +92,6 @@ Combo/parlay bets requiring multiple conditions:
 - Usually 0-500 volume
 - Returned by default `/markets` endpoint (why discovery is hard!)
 
-## 🔴 Commands to AVOID (Broken/Limited)
-
-| Command | Why It Fails | What To Use Instead |
-|---------|--------------|---------------------|
-| `kalshi.py hot` | MVE markets don't report 24h volume (always empty) | `--sort volume` flag |
-| `kalshi.py search "bitcoin"` | Only searches MVE markets; misses all binary markets | `--series KXBTC` |
-| `kalshi.py markets` (no filters) | Returns 100 newest MVE markets with $0 volume | `--series` + `--min-volume` |
-| `kalshi.py trades TICKER` | Returns 404 for many market types | Check `orderbook` instead |
-| `kalshi.py categories` | MVE markets return N/A category | Use `--series` directly |
 
 ## ✅ Commands That WORK
 
@@ -122,11 +113,19 @@ python3 kalshi.py markets --series KXBTC --spread-max 0.05 --sort spread
 # See all series (8,200+ - overwhelming but complete)
 python3 kalshi.py series
 
-# Find series by keyword in title
-python3 kalshi.py series | grep -i "bitcoin"
+# Series with volume only, sorted by volume
+python3 kalshi.py series --include-volume --sort volume
 
-# Find MVE markets with some volume
-python3 kalshi.py opportunities --min-volume 50 --limit 20
+# List unique categories only
+python3 kalshi.py series --categories-only
+
+# Top markets by volume (optionally by category)
+python3 kalshi.py hot --limit 20
+python3 kalshi.py hot --category Crypto --limit 10
+
+# Output as YAML (hot, series, markets)
+python3 kalshi.py hot --yaml
+python3 kalshi.py series --include-volume --category Crypto --yaml
 ```
 
 ### Market Analysis
@@ -160,8 +159,8 @@ print('MVE' if 'mve_collection_ticker' in m else 'Binary', '|', m.get('volume', 
 ### Trading
 
 ```bash
-# Check balance
-python3 kalshi.py balance
+# Account snapshot (balance, portfolio value, open positions, open orders, P&L)
+python3 kalshi.py account
 
 # Place buy order
 python3 kalshi.py buy --ticker KXTESLADELIVERYBY-27-500000 --side yes --count 10 --price 0.22
@@ -172,15 +171,15 @@ python3 kalshi.py positions
 # Positions closing soon (e.g., next 3 days)
 python3 kalshi.py positions --close-soon 3
 
+# List resting orders
+python3 kalshi.py orders --status resting
+
 # Cancel order
 python3 kalshi.py cancel ORDER_ID
 
 # Find and cancel stale orders (older than 120 minutes)
 python3 kalshi.py orders --stale-minutes 120
 python3 kalshi.py orders --stale-minutes 120 --cancel-stale
-
-# P&L snapshot
-python3 kalshi.py pnl
 ```
 
 ## 💰 Market Discovery Strategies
@@ -198,11 +197,14 @@ for series in KXTESLADELIVERYBY KXBTC KXETH KXSP500 KXNAS; do
 done
 ```
 
-### Strategy 2: Find MVE Markets With Volume
+### Strategy 2: Top Markets by Volume
 
 ```bash
-# MVE markets with >50 volume (9 markets as of testing)
-python3 kalshi.py opportunities --min-volume 50 --limit 20
+# Top 20 markets by total volume
+python3 kalshi.py hot --limit 20
+
+# Top 10 in a category (e.g. Crypto, Politics)
+python3 kalshi.py hot --category Crypto --limit 10
 ```
 
 ### Strategy 3: Check a Specific Series
@@ -259,13 +261,12 @@ for m in data['markets']:
 
 ## 🚨 Known Limitations (From Testing)
 
-1. **Default market listing** - Returns newest MVE markets with 0 volume. Always use `--series` filter.
-2. **Search command** - Only searches MVE markets from default endpoint. Cannot find binary markets like Tesla or Bitcoin.
-3. **Hot/trending** - Returns empty because MVE markets don't report 24h volume.
-4. **Trades endpoint** - Returns 404 for many markets. Use `orderbook` instead.
-5. **Price display** - Some markets show cents as dollars (e.g., $22 instead of $0.22). Verify in orderbook.
-6. **8,200+ series** - Overwhelming list with no "active only" filter. Use the curated list above.
-7. **Event markets** - Events show 0 associated markets (API limitation).
+1. **Default market listing** - Returns newest MVE markets with 0 volume. Always use `--series` filter or `hot`.
+2. **Market discovery** - Use `hot --category X` or `markets --series TICKER` to find liquid binary markets.
+3. **Trades endpoint** - Returns 404 for many markets. Use `orderbook` instead.
+4. **Price display** - Some markets show cents as dollars (e.g., $22 instead of $0.22). Verify in orderbook.
+5. **8,200+ series** - Overwhelming list. Use `series --include-volume --sort volume` to see by volume, or `series --categories-only` for category names.
+6. **Events/events-mve** - Removed from CLI; use `markets --series TICKER` or `hot --category X` for discovery.
 
 ## 📚 Resources
 
@@ -274,12 +275,4 @@ for m in data['markets']:
 - **OpenAPI Spec**: https://docs.kalshi.com/openapi.yaml
 - **Kalshi Trading Console**: https://kalshi.com
 
-## 🔧 API Endpoints
-
-| Environment | Base URL |
-|-------------|----------|
-| Production | `https://api.elections.kalshi.com/trade-api/v2` |
-
 ---
-
-**Agent Note**: When helping users find trading opportunities, always use the `--series` approach. The `search` command and default `markets` listing are essentially broken for finding liquid binary markets due to Kalshi's shift to MVE markets. The 5 proven series in the table above are the fastest path to active markets.

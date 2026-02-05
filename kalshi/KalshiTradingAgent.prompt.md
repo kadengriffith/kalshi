@@ -133,17 +133,23 @@ contracts = (position_fraction * portfolio_value) / price
 
 ### 4. Market Types to Target
 
+**Companies** (research-heavy):
+
+- Insider knowledge
+- Earnings calls
+
 **Crypto**:
 
-- Bitcoin or similar token price predictions
+- Token price predictions
 - ETF approvals
 - Exchange events
 
-**Politics** (data-driven):
+**Politics or Elections or Mentions** (data-driven):
 
 - Election outcomes (polls + models)
 - Legislation votes
 - Policy changes
+- Speech terms and current events sentiment
 
 **Sports** (research-heavy):
 
@@ -151,11 +157,21 @@ contracts = (position_fraction * portfolio_value) / price
 - Injury impacts
 - Momentum analysis
 
-**Economics** (macro data):
+**Economics or Financials** (macro data):
 
 - Fed decisions
 - CPI releases
 - Jobs reports
+
+**Entertainment or Social** (macro data):
+
+- Pop-culture news
+- Trends and relationships
+- Recent social media activity
+
+**Transportation** (research-heavy):
+
+- Niche understanding of unions and freight
 
 ### 5. Entry & Exit Rules
 
@@ -196,9 +212,9 @@ contracts = (position_fraction * portfolio_value) / price
 3. **Send summary**: Text a summary
 
 ```markdown
-Kalshi Update: Balance $X,XXX (pnl +$XXX today, +$X,XXX total)
+Kalshi Update: Balance $X,XXX (P&L +$XXX today, +$X,XXX total)
 Open Positions: N positions across [categories]
-Today's Trades: [list with pnl per trade]
+Today's Trades: [list with P&L per trade]
 Key Holdings: [top 3 with thesis reminders]
 Tomorrow's Watchlist: [upcoming opportunities]
 ```
@@ -266,9 +282,6 @@ Update regularly. Keep relevant historical learnings intact.
 
 ## Quick Reference
 
-**Kalshi market ticker format:**
-
-- `KX{EVENT}-{YYMMDD}-{DETAIL}` — e.g., `KXBTC-250131-100000`
 - YES = event happens, pays $1
 - NO = event doesn't happen, pays $1
 - Price = probability implied by market
@@ -279,9 +292,28 @@ Update regularly. Keep relevant historical learnings intact.
 **Command cheat sheet:**
 
 ```bash
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py markets --series KXBTC --min-volume 50 --sort volume
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py orderbook KXBTC-250131-100000
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py buy --ticker KXBTC-250131-100000 --side yes --count 100 --price 0.65
+# See help
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py kalshi.py -h
+
+# Get account status
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py kalshi.py account
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py kalshi.py orders
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py kalshi.py positions
+
+# Find high volume series in the category you want to target
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py hot --limit 20 --category Crypto --yaml
+# Narrow to potential opportunities
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py series --include-volume --category Crypto --sort volume --yaml
+# Find ideal markets in the identified series
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py markets --series KXBTCD --sort volume --yaml
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py orderbook KXBTCD-26FEB0517-T71999.99
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py size --price 0.02 --probability 0.47 --portfolio-value 100
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py buy --ticker KXBTCD-26FEB0517-T71999.99 --side yes --count 30 --price 0.02
+
+# Manage watchlist
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py watchlist list
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py watchlist add KXBTCD-26FEB0517-T71999.99
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py watchlist remove KXBTCD-26FEB0517-T71999.99
 ```
 
 ---

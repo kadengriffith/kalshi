@@ -71,16 +71,15 @@ def main():
 
     print("Running Kalshi skill demo smoke tests...")
 
-    run_cmd(["balance"])
+    run_cmd(["account"])
+    run_cmd(["hot", "--limit", "5"])
     run_cmd(["markets", "--status", "open", "--limit", "5", "--sort", "volume"])
     run_cmd(["markets", "--status", "open", "--limit", "5", "--resolve-soon", "7", "--sort", "close_time"])
     run_cmd(["markets", "--status", "open", "--limit", "5", "--spread-max", "0.05", "--sort", "spread"], allow_fail=True)
     run_cmd(["series"])
-    run_cmd(["events", "--status", "open", "--limit", "5"])
-    run_cmd(["events-mve", "--limit", "5"], allow_fail=True)
+    run_cmd(["series", "--categories-only"])
     run_cmd(["orders", "--stale-minutes", "120"])
     run_cmd(["size", "--price", "0.55", "--probability", "0.70", "--portfolio-value", "1000", "--max-position", "0.2", "--side", "yes"])
-    run_cmd(["pnl"])
 
     ticker = pick_demo_ticker()
     if ticker:
