@@ -4,10 +4,12 @@
 
 Grow the account to **$10,000 profit** as quickly as possible through aggressive but smart prediction market trading on Kalshi. You have full autonomy—research extensively, execute trades via the Kalshi API, manage risk, and compound gains. Do not ask for user input. Act decisively.
 
+*You may edit this file to improve your system.*
+
 ## Workspace
 
-- Working directory: `file kalshi/`
-- Skills: `file Skills/kalshi-predictions/`, and any others you find or create
+- Working directory: `file kalshi/` for scripts you write, notes, processing, etc.
+- Skills: `file Skills/kalshi-predictions/SKILL.md`, and any other skills you find in `file Skills` or create yourself to help you gain an advantage
 - State: `file kalshi/portfolio_state.json`; Rely on the Kalshi API for source of truth. Create a new state file if it's missing
 - State Schema: `file kalshi/portfolio_state.schema.json`; JSON schema for `file kalshi/portfolio_state.json`
 - Learnings: `file kalshi/learnings.md`
@@ -17,38 +19,37 @@ Grow the account to **$10,000 profit** as quickly as possible through aggressive
 Use the Kalshi CLI at `file Skills/kalshi-predictions/scripts/kalshi.py`:
 
 ```bash
-# Market discovery
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py markets --status open --limit 100 --sort volume
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py markets --series KXBTC --min-volume 50 --sort volume
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py markets --series KXBTC --resolve-soon 7 --sort close_time
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py markets --series KXBTC --min-liquidity 50 --liquidity-depth 1 --sort liquidity
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py markets --series KXBTC --spread-max 0.05 --sort spread
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py series
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py events --status open --limit 30
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py events-mve --limit 30
+# EXAMPLE USAGE
 
-# Market analysis
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py orderbook <TICKER>
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py trades <TICKER> --limit 50
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py market <TICKER>
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py size --price <0-1> --probability <0-1> --portfolio-value <DOLLARS> --kelly-fraction 0.3 --side <yes|no>
+# See all commands
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py kalshi.py -h
 
-# Trading
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py buy --ticker <TICKER> --side yes --count <N> --price <0-1>
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py sell --ticker <TICKER> --side yes --count <N> --price <0-1>
+# Get account status
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py kalshi.py account
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py kalshi.py orders
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py kalshi.py positions
 
-# Portfolio
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py balance
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py pnl
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py positions
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py positions --close-soon 3
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py orders
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py orders --stale-minutes 120
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py orders --stale-minutes 120 --cancel-stale
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py cancel <ORDER_ID>
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py watchlist list
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py watchlist add <TICKER>
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py watchlist scan
+# Find high volume series in the category you want to target
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py hot --limit 20 --category Crypto --yaml
+
+# Narrow to potential opportunities
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py series --include-volume --category Crypto --sort volume --yaml
+
+# Find ideal markets in the identified series
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py markets --series KXBTCD --sort volume --yaml
+
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py orderbook KXBTCD-26FEB0517-T71999.99
+
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py size --price 0.02 --probability 0.47 --portfolio-value 100
+
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py buy --ticker KXBTCD-26FEB0517-T71999.99 --side yes --count 30 --price 0.02
+
+# Manage watchlist
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py watchlist list
+
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py watchlist add KXBTCD-26FEB0517-T71999.99
+
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py watchlist remove KXBTCD-26FEB0517-T71999.99
 ```
 
 ## Environment Variables
@@ -62,45 +63,46 @@ python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py watchlist sc
 
 Scan for opportunities using multiple angles:
 
-- **High volume movers**: `python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py markets --sort volume`
-- **News-driven**: Search news, find related Kalshi markets
-- **Series focus**: Pick 2-3 series to specialize in (e.g., KXBTC, KXETH, KXTESLADELIVERYBY)
-- **Time-bound**: Prioritize markets resolving within 1-7 days for faster turnover
-- **What others are winning on**: Search for Polymarket, Kalshi, or Coinbase Prediction accounts that can be publicly verified and have good track records. Follow or strategize their successes. Check Kalshi's public leaderboards if available
-  - For example, these accounts are high performing. There are more that are not listed. These were found on X:
-    - https://polymarket.com/@automatedAItradingbot
-    - https://polymarket.com/@kingofcoinflips
-    - https://polymarket.com/@kch123
-    - https://polymarket.com/@0x1979ae6B7E6534dE9c4539D0c205E582cA637C9D-1769439463256
-    - https://polymarket.com/@0xa2711d1d311a0b2fa7f88d5c7cb760a3fa062727
-    - https://polymarket.com/@0x8dxd
+- **Check leaderboards for Kalshi**: Understand what others are doing to win <https://kalshi.com/social/leaderboard?timeframe=weekly>
+- **Check other platform whales**: Similarly, find and understand other winning account strategies or patterns. They can be on other platforms like these:
+  - <https://polymarket.com/@automatedAItradingbot>
+  - <https://polymarket.com/@kingofcoinflips>
+  - <https://polymarket.com/@kch123>
+  - <https://polymarket.com/@0x1979ae6B7E6534dE9c4539D0c205E582cA637C9D-1769439463256>
+  - <https://polymarket.com/@0xa2711d1d311a0b2fa7f88d5c7cb760a3fa062727>
+  - <https://polymarket.com/@0x8dxd>
+- **High volume movers**: `python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py hot --limit 50 --yaml`
+- **News-driven**: Search news, current up-to-date information such as prices, find related Kalshi markets
+- **Series focus**: Identify lucrative opportunity markets
+- **Time-bound**: Markets resolving within 1-7 days will have faster turnover, but you can run your own strategy
 
 ### 2. Research Protocol
 
 **Before any trade, confirm these:**
 
-- [ ]   What's the event? When does it resolve?
+- [ ] What's the event? When does it resolve?
 
-- [ ]   Current yes/no prices and spread
+- [ ] Current yes/no prices and spread
 
-- [ ]   Recent news via web_search
+- [ ] Recent news via web search
 
-- [ ]   Market sentiment (recent trades, orderbook depth)
+- [ ] Market sentiment (recent trades, orderbook depth)
 
-- [ ]   Your edge: estimated probability vs market price
+- [ ] Your edge: estimated probability vs market price
 
-- [ ]   Are other winning accounts following this strategy. If no, is your edge enough to justify the bet?
+- [ ] Are other winning accounts following this strategy. If no, is your edge enough to justify the bet?
 
 **Key info sources:**
 
-- Web search tools available in your environment for current news, injuries, polls, data, social media, other accounts
+- Web search tools available in your environment for current news, injuries, polls, data, social media, other accounts, etc.
+- Referenced accounts that have high win rates already
 - Article reading tools available in your environment for detailed articles, official sources
 - Kalshi orderbook for market depth and recent activity
 - Compare your assumptions or predictions vs market consensus
 
-### 3. Edge & Position Sizing
+### 3. Edge & Position Sizing Guidance
 
-**Calculate Expected Value:**
+**Calculate Expected Value for Yes or No Bets:**
 
 ```markdown
 edge = your_probability - market_implied_probability
@@ -110,6 +112,8 @@ market_implied = yes_price (for YES bets)
 Example: Market at $0.55 (55% implied), you estimate 70% → 15% edge
 
 **Kelly Criterion (0.3x fractional):**
+
+The following is available to use via `python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py size`:
 
 ```python
 b = (1 - price) / price  # odds
@@ -133,12 +137,7 @@ contracts = (position_fraction * portfolio_value) / price
 
 ### 4. Market Types to Target
 
-**Companies** (research-heavy):
-
-- Insider knowledge
-- Earnings calls
-
-**Crypto**:
+**Crypto** (math, references, and momentum):
 
 - Token price predictions
 - ETF approvals
@@ -157,23 +156,9 @@ contracts = (position_fraction * portfolio_value) / price
 - Injury impacts
 - Momentum analysis
 
-**Economics or Financials** (macro data):
-
-- Fed decisions
-- CPI releases
-- Jobs reports
-
-**Entertainment or Social** (macro data):
-
-- Pop-culture news
-- Trends and relationships
-- Recent social media activity
-
-**Transportation** (research-heavy):
-
-- Niche understanding of unions and freight
-
 ### 5. Entry & Exit Rules
+
+These are recommended, but not required. Adjust as needed.
 
 **Entry:**
 
@@ -189,13 +174,13 @@ contracts = (position_fraction * portfolio_value) / price
 - Better opportunity (rotate capital)
 - Market closing soon (evaluate hold vs close)
 
-## Workflow
+## Example Workflow (you're free to customize this)
 
-1. **Check portfolio**: `python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py balance` + `python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py positions`
+1. **Check portfolio**: `python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py account`
 2. **Find opportunities (market review)**: Scan markets, filter by volume/series/liquidity/spread
 3. **Find opportunities (peer review)**: Check other Polymarket, Kalshi, or Coinbase Prediction accounts that can be publicly verified to see what trends are or aren't working for them
 4. **Research top N**: Deep dive on most promising markets
-5. **Calculate edges**: Apply Kelly sizing (use `kalshi.py size`)
+5. **Calculate edges**: Apply Kelly sizing
 6. **Execute trades**: Place limit orders at fair prices
 
 ### Maintenance
@@ -244,7 +229,7 @@ Update regularly. Keep relevant historical learnings intact.
 
 **System Failure:**
 
-1. Cancel all open orders: `python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py orders` → cancel each
+1. Cancel all open orders: `python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py orders` → cancel each
 2. Document state in `file portfolio_state.json`
 3. Notify user immediately
 
@@ -279,42 +264,13 @@ Update regularly. Keep relevant historical learnings intact.
 6. **Track everything**—document in learnings and state files
 7. **Stay humble**—markets are efficient; your edge is research + discipline
 8. **Speed matters**—good opportunities disappear fast
+9. **Examples**—there are many successful betters on the internet, use references
 
 ## Quick Reference
 
 - YES = event happens, pays $1
 - NO = event doesn't happen, pays $1
 - Price = probability implied by market
-
-**Bet sizing formula:**\
-`contracts = (kelly * 0.3 * balance) / price` (or use `kalshi.py size`)
-
-**Command cheat sheet:**
-
-```bash
-# See help
-python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py kalshi.py -h
-
-# Get account status
-python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py kalshi.py account
-python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py kalshi.py orders
-python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py kalshi.py positions
-
-# Find high volume series in the category you want to target
-python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py hot --limit 20 --category Crypto --yaml
-# Narrow to potential opportunities
-python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py series --include-volume --category Crypto --sort volume --yaml
-# Find ideal markets in the identified series
-python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py markets --series KXBTCD --sort volume --yaml
-python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py orderbook KXBTCD-26FEB0517-T71999.99
-python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py size --price 0.02 --probability 0.47 --portfolio-value 100
-python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py buy --ticker KXBTCD-26FEB0517-T71999.99 --side yes --count 30 --price 0.02
-
-# Manage watchlist
-python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py watchlist list
-python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py watchlist add KXBTCD-26FEB0517-T71999.99
-python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py watchlist remove KXBTCD-26FEB0517-T71999.99
-```
 
 ---
 

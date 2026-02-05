@@ -883,9 +883,9 @@ def cmd_cancel(client, args):
 
 
 def cmd_positions(client, args):
-    data = client._request("GET", "/portfolio/positions")
-    positions = data.get('positions', [])
-
+    data = client._request("GET", "/portfolio/positions?count_filter=position&limit=1000")
+    positions = data.get('market_positions', [])
+    
     close_info = {}
     if args.close_soon is not None:
         horizon = datetime.now(timezone.utc) + timedelta(days=args.close_soon)
@@ -909,6 +909,22 @@ def cmd_positions(client, args):
 
     if not positions:
         print("\n📭 No open positions")
+        return
+
+    if getattr(args, 'yaml', False):
+        out = []
+        for p in positions:
+            item = {
+                'ticker': p.get('ticker'),
+                'position': p.get('position'),
+                'avg_entry_price': p.get('avg_entry_price'),
+                'mark_price': p.get('mark_price'),
+                'unrealized_pnl': p.get('unrealized_pnl')
+            }
+            if args.close_soon is not None:
+                item['close_time'] = close_info.get(p.get('ticker'), 'N/A')
+            out.append(item)
+        print(yaml.dump(out, default_flow_style=False, sort_keys=False, allow_unicode=True))
         return
 
     print(f"\n📈 {len(positions)} Open Positions:\n")
@@ -937,8 +953,8 @@ def cmd_positions(client, args):
 
 def cmd_account(client, args):
     data = client._request("GET", "/portfolio/balance")
-    positions_data = client._request("GET", "/portfolio/positions")
-    positions = positions_data.get('positions', [])
+    positions_data = client._request("GET", "/portfolio/positions?count_filter=position&limit=1000")
+    positions = positions_data.get('market_positions', [])
     orders_data = client._request("GET", "/portfolio/orders?status=resting&limit=1000")
     open_orders = orders_data.get('orders', [])
 
@@ -1057,6 +1073,7 @@ def main():
 
     p = subparsers.add_parser('positions', help='View positions')
     p.add_argument('--close-soon', type=int, help='Only show positions closing within N days')
+    p.add_argument('--yaml', action='store_true', help='Output as YAML')
     subparsers.add_parser('account', help='Account snapshot (balance, positions, P&L)')
 
     p = subparsers.add_parser('watchlist', help='Manage watchlist')
