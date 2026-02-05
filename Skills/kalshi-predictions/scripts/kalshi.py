@@ -776,7 +776,7 @@ def cmd_buy(client, args):
             print("❌ Error: --price must be between 0 and 1 (exclusive).")
             return
         price_key = "yes_price_dollars" if args.side == "yes" else "no_price_dollars"
-        order_data[price_key] = args.price
+        order_data[price_key] = str(args.price)
 
     result = client._request("POST", "/portfolio/orders", order_data)
 
@@ -803,7 +803,7 @@ def cmd_sell(client, args):
             print("❌ Error: --price must be between 0 and 1 (exclusive).")
             return
         price_key = "yes_price_dollars" if args.side == "yes" else "no_price_dollars"
-        order_data[price_key] = args.price
+        order_data[price_key] = str(args.price)
 
     result = client._request("POST", "/portfolio/orders", order_data)
 
@@ -885,7 +885,7 @@ def cmd_cancel(client, args):
 def cmd_positions(client, args):
     data = client._request("GET", "/portfolio/positions?count_filter=position&limit=1000")
     positions = data.get('market_positions', [])
-    
+
     close_info = {}
     if args.close_soon is not None:
         horizon = datetime.now(timezone.utc) + timedelta(days=args.close_soon)
