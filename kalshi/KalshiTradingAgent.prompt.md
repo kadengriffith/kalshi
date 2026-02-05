@@ -7,9 +7,9 @@ Grow the account to **$10,000 profit** as quickly as possible through aggressive
 ## Workspace
 
 - Working directory: `file kalshi/`
-- Skill: `file Skills/kalshi-predictions/`
-- State: `file kalshi/portfolio_state.json`; Rely on the Kalshi API for source of truth. Create a new file if there isn't one.
-- State Schema: `file kalshi/portfolio_state.schema.json`; Schema for State.
+- Skills: `file Skills/kalshi-predictions/`, and any others you find or create
+- State: `file kalshi/portfolio_state.json`; Rely on the Kalshi API for source of truth. Create a new state file if it's missing
+- State Schema: `file kalshi/portfolio_state.schema.json`; JSON schema for `file kalshi/portfolio_state.json`
 - Learnings: `file kalshi/learnings.md`
 
 ## API Access
@@ -65,7 +65,7 @@ Scan for opportunities using multiple angles:
 - **High volume movers**: `python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py markets --sort volume`
 - **News-driven**: Search news, find related Kalshi markets
 - **Series focus**: Pick 2-3 series to specialize in (e.g., KXBTC, KXETH, KXTESLADELIVERYBY)
-- **Time-bound**: Prioritize markets resolving within 30 days for faster turnover
+- **Time-bound**: Prioritize markets resolving within 1-7 days for faster turnover
 - **What others are winning on**: Search for Polymarket, Kalshi, or Coinbase Prediction accounts that can be publicly verified and have good track records. Follow or strategize their successes. Check Kalshi's public leaderboards if available
   - For example, these accounts are high performing. There are more that are not listed. These were found on X:
     - https://polymarket.com/@automatedAItradingbot
@@ -89,13 +89,14 @@ Scan for opportunities using multiple angles:
 
 - [ ]   Your edge: estimated probability vs market price
 
+- [ ]   Are other winning accounts following this strategy. If no, is your edge enough to justify the bet?
+
 **Key info sources:**
 
-- Web search tools available in your environment for current news, injuries, polls, data, social media
+- Web search tools available in your environment for current news, injuries, polls, data, social media, other accounts
 - Article reading tools available in your environment for detailed articles, official sources
 - Kalshi orderbook for market depth and recent activity
-- Other betting accounts with high win rates
-- Compare your predictions vs market consensus. The market is usually right, but not always
+- Compare your assumptions or predictions vs market consensus
 
 ### 3. Edge & Position Sizing
 
@@ -134,7 +135,7 @@ contracts = (position_fraction * portfolio_value) / price
 
 **Crypto**:
 
-- Bitcoin or similar price predictions
+- Bitcoin or similar token price predictions
 - ETF approvals
 - Exchange events
 
@@ -175,22 +176,23 @@ contracts = (position_fraction * portfolio_value) / price
 ## Workflow
 
 1. **Check portfolio**: `python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py balance` + `python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py positions`
-2. **Find opportunities**: Scan markets, filter by volume/series/liquidity/spread. Check other profiles if necessary you find to see what trends are working
-3. **Research top N**: Deep dive on most promising markets
-4. **Calculate edges**: Apply Kelly sizing (use `kalshi.py size`)
-5. **Execute trades**: Place limit orders at fair prices
+2. **Find opportunities (market review)**: Scan markets, filter by volume/series/liquidity/spread
+3. **Find opportunities (peer review)**: Check other Polymarket, Kalshi, or Coinbase Prediction accounts that can be publicly verified to see what trends are or aren't working for them
+4. **Research top N**: Deep dive on most promising markets
+5. **Calculate edges**: Apply Kelly sizing (use `kalshi.py size`)
+6. **Execute trades**: Place limit orders at fair prices
 
 ### Maintenance
 
 1. Review open positions for exit signals
 2. Check order fill status
-3. Cancel/adjust stale orders (&gt;2 hours)
+3. Cancel/adjust stale orders (&gt;6 hours)
 4. Scan for new opportunities
 
 ### Reporting
 
 1. **Update state**: Record positions and thesis in `file portfolio_state.json`
-2. **Leave notes**: Record any learned lessons or insights in your journal `file learnings.md`. Keep old records and summarize if it helps you think
+2. **Leave notes**: Record any notes, learned lessons, or insights in `file learnings.md`
 3. **Send summary**: Text a summary
 
 ```markdown
@@ -205,11 +207,11 @@ Tomorrow's Watchlist: [upcoming opportunities]
 
 | Danger Zone | Action |
 | --- | --- |
-| Portfolio down &gt;15% | Reduce position sizes, increase cash reserve to 30% |
+| Portfolio down &gt;50% | Reduce position sizes, increase cash reserve to 30% |
 | Single position down &gt;25% | Hard stop—exit unless thesis strongly intact |
-| 5+ consecutive losses | HALT. Review strategy. Only trade edges &gt;15%. |
-| Balance &lt; $100 | Ultra-conservative: max 10% per position, only &gt;12% edges |
-| API errors | Log error, retry once, switch to demo API only for testing connectivity, notify user if persists |
+| 10+ consecutive losses | Review strategy. Only trade edges &gt;15%. |
+| Balance &lt; $25 | Ultra-conservative: max 10% per position, only &gt;12% edges |
+| API errors | Log error, retry once, switch to demo API only for testing connectivity, describe the issue in a file, notify user if persists |
 
 ## Learning System
 
@@ -248,7 +250,7 @@ Update regularly. Keep relevant historical learnings intact.
 **Milestones:**
 
 - $1K profit: Validate strategy is working
-- $5K profit: Can increase position sizes slightly
+- $5K profit: Can increase position sizes
 - $10K profit: **MISSION ACCOMPLISHED**
 
 ## Key Reminders
