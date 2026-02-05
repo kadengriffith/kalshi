@@ -17,6 +17,14 @@ metadata:
 Trade event-based prediction markets via Kalshi's REST API. Bet on sports, politics,
 economics, and more with full programmatic control.
 
+## 🔑 Authentication
+
+Requires environment variables:
+- `KALSHI_API_KEY_ID` - Your API key ID from Kalshi settings
+- `KALSHI_PRIVATE_KEY` - RSA private key (PKCS#1 format)
+
+Add these in [Settings > Developers](/?t=settings&s=developers).
+
 ## ⚡ Quick Start
 
 ```bash
@@ -25,10 +33,10 @@ export KALSHI_API_KEY_ID='your-key-id'
 export KALSHI_PRIVATE_KEY='your-private-key'
 
 # Install prerequisites
-python3 -m pip install --user cryptography requests
+python3 -m pip install --user cryptography requests pyyaml
 
 # Test connection
-python3 /home/workspace/Skills/kalshi-predictions/scripts/kalshi.py account
+python3 /workspace/Skills/kalshi-predictions/scripts/kalshi.py account
 
 # QUICK: Find liquid markets (use these series - they're proven)
 python3 kalshi.py markets --series KXTESLADELIVERYBY --min-volume 100 --sort volume
@@ -39,39 +47,12 @@ python3 kalshi.py markets --series KXETH --min-volume 50 --sort volume
 python3 kalshi.py positions
 ```
 
-## 🔑 Authentication
-
-Requires environment variables:
-- `KALSHI_API_KEY_ID` - Your API key ID from Kalshi settings
-- `KALSHI_PRIVATE_KEY` - RSA private key (PKCS#1 format)
-
-Add these in [Settings > Developers](/?t=settings&s=developers).
-
 ## ✅ Prerequisites
 
 Install required Python packages:
 
 ```bash
 python3 -m pip install --user cryptography requests pyyaml
-```
-
-## 🎯 TL;DR: Finding Markets That Actually Trade
-
-**The Problem**: Kalshi now has 8,200+ series. Most have $0 volume. The default market listing shows NEWEST markets first (mostly MVE parlays with no activity).
-
-**The Solution**: Use `--series` filter on these **proven liquid series**:
-
-| Series | Category | Typical Volume | What It Trades |
-|--------|----------|----------------|----------------|
-| `KXTESLADELIVERYBY` | Companies | 50K+ | Tesla delivery targets |
-| `KXBTC` | Crypto | 1K-8K | Bitcoin daily price ranges |
-| `KXETH` | Crypto | 500-2K | Ethereum daily price ranges |
-| `KXSP500` | Financials | 100-1K | S&P 500 targets |
-| `KXNAS` | Financials | 50-500 | NASDAQ targets |
-
-```bash
-# Best discovery command pattern:
-python3 kalshi.py markets --series SERIES_TICKER --min-volume 100 --sort volume
 ```
 
 ## 📊 Understanding Kalshi Market Types
@@ -90,14 +71,29 @@ Combo/parlay bets requiring multiple conditions:
 - "LeBron scores 15+ AND Luka scores 20+ AND Lakers win"
 - Tickers like `KXMVESPORTSMULTIGAMEEXTENDED-S2026...`
 - Usually 0-500 volume
-- Returned by default `/markets` endpoint (why discovery is hard!)
+- Returned by default `/markets` endpoint
 
-
-## ✅ Commands That WORK
 
 ### Market Discovery
 
 ```bash
+# Top series by volume (optionally by category)
+python3 kalshi.py hot --limit 50
+python3 kalshi.py hot --category Crypto --limit 50
+
+# Output as YAML (hot, series, markets)
+python3 kalshi.py hot --yaml
+python3 kalshi.py series --include-volume --category Crypto --yaml
+
+# See all series (8,200+ - overwhelming but complete)
+python3 kalshi.py series
+
+# Series with volume only, sorted by volume
+python3 kalshi.py series --include-volume --sort volume
+
+# List unique categories only
+python3 kalshi.py series --categories-only
+
 # Find liquid markets in a series (THE command to use)
 python3 kalshi.py markets --series KXTESLADELIVERYBY --min-volume 100 --sort volume
 
@@ -109,26 +105,11 @@ python3 kalshi.py markets --series KXBTC --min-liquidity 50 --liquidity-depth 1 
 
 # Filter by max bid-ask spread
 python3 kalshi.py markets --series KXBTC --spread-max 0.05 --sort spread
-
-# See all series (8,200+ - overwhelming but complete)
-python3 kalshi.py series
-
-# Series with volume only, sorted by volume
-python3 kalshi.py series --include-volume --sort volume
-
-# List unique categories only
-python3 kalshi.py series --categories-only
-
-# Top markets by volume (optionally by category)
-python3 kalshi.py hot --limit 20
-python3 kalshi.py hot --category Crypto --limit 10
-
-# Output as YAML (hot, series, markets)
-python3 kalshi.py hot --yaml
-python3 kalshi.py series --include-volume --category Crypto --yaml
 ```
 
 ### Market Analysis
+
+The CLI includes Coinbase API integration for real-time crypto price data to help price crypto prediction markets.
 
 ```bash
 # View orderbook (shows bids/asks, works for all markets)
@@ -139,6 +120,27 @@ python3 kalshi.py market KXTESLADELIVERYBY-27-500000
 
 # View price history
 python3 kalshi.py candlesticks TICKER --limit 50
+
+# Get current Bitcoin price
+python3 kalshi.py crypto-price BTC
+python3 kalshi.py crypto-price BTC --yaml
+
+# Get Ethereum price
+python3 kalshi.py crypto-price ETH
+
+# View crypto orderbook depth
+python3 kalshi.py crypto-orderbook BTC
+python3 kalshi.py crypto-orderbook ETH --yaml
+
+# Get price candlesticks (default 1 hour)
+python3 kalshi.py crypto-candles BTC --granularity 3600
+python3 kalshi.py crypto-candles ETH --granularity 86400 --yaml
+
+# Granularity options: 60 (1m), 300 (5m), 900 (15m), 3600 (1h), 21600 (6h), 86400 (1d)
+
+# Get 24h stats (volume, open, high, low)
+python3 kalshi.py crypto-stats BTC
+python3 kalshi.py crypto-stats ETH --yaml
 
 # Order sizing (Kelly fraction of 0.3 default)
 python3 kalshi.py size --price 0.55 --probability 0.70 --portfolio-value 1000 --side yes
@@ -182,39 +184,38 @@ python3 kalshi.py orders --stale-minutes 120
 python3 kalshi.py orders --stale-minutes 120 --cancel-stale
 ```
 
-## 💰 Market Discovery Strategies
-
-### Strategy 1: Scan Known Liquid Series (Recommended)
+**Example: Pricing a Bitcoin market**
 
 ```bash
-#!/bin/bash
-# Quick scan of proven high-volume series
-echo "=== Scanning liquid markets ==="
-for series in KXTESLADELIVERYBY KXBTC KXETH KXSP500 KXNAS; do
-  echo ""
-  echo "--- $series ---"
-  python3 kalshi.py markets --series $series --min-volume 50 --sort volume --limit 5 2>/dev/null | grep -E "(Ticker|KX)" | tail -6
-done
+# 1. Check current BTC price
+python3 kalshi.py crypto-price BTC --yaml
+
+# 2. Find relevant Kalshi markets
+python3 kalshi.py markets --series KXBTC --status open --sort volume --limit 10
+
+# 3. View specific market details
+python3 kalshi.py market KXBTC-25FEB04-99K
+
+# 4. Calculate fair value and position size
+python3 kalshi.py size --price 0.35 --probability 0.55 --portfolio-value 5000 --side yes
 ```
 
-### Strategy 2: Top Markets by Volume
+## 💰 Market Discovery Examples
 
 ```bash
 # Top 20 markets by total volume
-python3 kalshi.py hot --limit 20
+python3 kalshi.py hot --limit 50
 
 # Top 10 in a category (e.g. Crypto, Politics)
-python3 kalshi.py hot --category Crypto --limit 10
+python3 kalshi.py hot --category Crypto --limit 50
 ```
-
-### Strategy 3: Check a Specific Series
 
 ```bash
 # Step 1: Search series for topics
 python3 kalshi.py series | grep -iE "weather|politics|sports" | head -10
 
 # Step 2: Query with volume filter
-python3 kalshi.py markets --series KXWEATHER --min-volume 10 --sort volume
+python3 kalshi.py markets --series KXWEATHER --sort volume
 ```
 
 ## 🏷️ Understanding Market Data
@@ -244,7 +245,7 @@ python3 kalshi.py orderbook TICKER
 
 ```python
 import sys
-sys.path.insert(0, '/home/workspace/Skills/kalshi-predictions/scripts')
+sys.path.insert(0, '/workspace/Skills/kalshi-predictions/scripts')
 from kalshi import KalshiClient
 
 client = KalshiClient()
@@ -259,20 +260,14 @@ for m in data['markets']:
         print(f"  Volume: {volume:,} | Ask: {m.get('yes_ask', 0)}c")
 ```
 
-## 🚨 Known Limitations (From Testing)
-
-1. **Default market listing** - Returns newest MVE markets with 0 volume. Always use `--series` filter or `hot`.
-2. **Market discovery** - Use `hot --category X` or `markets --series TICKER` to find liquid binary markets.
-3. **Trades endpoint** - Returns 404 for many markets. Use `orderbook` instead.
-4. **Price display** - Some markets show cents as dollars (e.g., $22 instead of $0.22). Verify in orderbook.
-5. **8,200+ series** - Overwhelming list. Use `series --include-volume --sort volume` to see by volume, or `series --categories-only` for category names.
-6. **Events/events-mve** - Removed from CLI; use `markets --series TICKER` or `hot --category X` for discovery.
-
 ## 📚 Resources
 
-- **Main Docs**: https://docs.kalshi.com
-- **API Reference**: https://trading-api.readme.io
+- **Main Kalshi Docs**: https://docs.kalshi.com
+- **Kalshi API Reference**: https://trading-api.readme.io
+- **Local Kalshi API Docs**: `file Skills/kalshi-predictions/references/kalshi-api-documentation.md`
 - **OpenAPI Spec**: https://docs.kalshi.com/openapi.yaml
 - **Kalshi Trading Console**: https://kalshi.com
+- **Local Coinbase API Docs**: `file Skills/kalshi-predictions/references/coinbase-api-documentation.md`
+- **Coinbase API Docs**: https://docs.cdp.coinbase.com/api-reference/v2/introduction
 
 ---

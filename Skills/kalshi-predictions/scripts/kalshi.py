@@ -4,14 +4,18 @@ Full-featured tool for market discovery and automated trading
 Follows official Kalshi API documentation
 
 Usage:
-    kalshi.py hot [--limit N]   (default: top 10 by volume)
-    kalshi.py markets [--status STATUS] [--series SERIES] [--event EVENT] [--tickers T1,T2] [--mve-filter only|exclude] [--min-close-ts TS] [--max-close-ts TS] [--min-created-ts TS] [--max-created-ts TS] [--min-updated-ts TS] [--min-settled-ts TS] [--max-settled-ts TS] [--min-volume N] [--resolve-soon DAYS] [--min-liquidity N] [--sort volume]
+    kalshi.py hot [--limit N] [--category C] [--yaml]
+    kalshi.py markets [--status STATUS] [--series SERIES] [--event EVENT] [--tickers T1,T2] [--mve-filter only|exclude] [--min-close-ts TS] [--max-close-ts TS] [--min-created-ts TS] [--max-created-ts TS] [--min-updated-ts TS] [--min-settled-ts TS] [--max-settled-ts TS] [--min-volume N] [--resolve-soon DAYS] [--min-liquidity N] [--sort volume] [--yaml]
     kalshi.py market <TICKER>
     kalshi.py size --price P --probability P --portfolio-value V [--kelly-fraction F] [--side yes|no]
     kalshi.py watchlist <add|remove|list|scan> [TICKER...]
     kalshi.py account
-    kalshi.py series [--category C] [--tags T]
-    kalshi.py positions
+    kalshi.py series [--category C] [--tags T] [--include-volume] [--sort volume|category|both] [--categories-only] [--yaml]
+    kalshi.py positions [--close-soon DAYS] [--yaml]
+    kalshi.py crypto-price <TICKER> [--currency USD] [--yaml]
+    kalshi.py crypto-orderbook <TICKER> [--currency USD] [--yaml]
+    kalshi.py crypto-candles <TICKER> [--granularity 3600] [--yaml]
+    kalshi.py crypto-stats <TICKER> [--currency USD] [--yaml]
 """
 
 import argparse
@@ -975,6 +979,47 @@ def cmd_account(client, args):
     print(f"Open Orders: {len(open_orders)}")
     print(f"Unrealized P&L: ${total_unrealized:,.2f}")
 
+class CoinbaseClient:
+    """Public Coinbase API Client"""
+
+    def __init__(self, currency: str = 'USD'):
+        self.base_url = "https://api.exchange.coinbase.com"
+        self.currency = currency
+
+    def get_product(self, ticker: str):
+        response = requests.get(f"{self.base_url}/products")
+        for product in response.json():
+            if product['id'] == f"{ticker}-{self.currency}":
+                return product
+        return None
+
+    def get_ticker(self, ticker: str):
+        product = self.get_product(ticker)
+        if product is None:
+            return None
+        response = requests.get(f"{self.base_url}/products/{product['id']}/ticker")
+        return response.json()
+
+    def get_orderbook(self, ticker: str):
+        product = self.get_product(ticker)
+        if product is None:
+            return None
+        response = requests.get(f"{self.base_url}/products/{product['id']}/book")
+        return response.json()
+
+    def get_candlesticks(self, ticker: str, granularity: str):
+        product = self.get_product(ticker)
+        if product is None:
+            return None
+        response = requests.get(f"{self.base_url}/products/{product['id']}/candles?granularity={granularity}")
+        return response.json()
+
+    def get_stats(self, ticker: str):
+        product = self.get_product(ticker)
+        if product is None:
+            return None
+        response = requests.get(f"{self.base_url}/products/{product['id']}/stats")
+        return response.json()
 
 def main():
     parser = argparse.ArgumentParser(description="Kalshi Prediction Markets CLI")
@@ -1080,7 +1125,50 @@ def main():
     p.add_argument('action', choices=['add', 'remove', 'list', 'scan'])
     p.add_argument('tickers', nargs='*')
 
+    p = subparsers.add_parser('crypto-price', help='Get price of a crypto')
+    p.add_argument('ticker')
+    p.add_argument('--currency', default='USD', help='Currency')
+    p.add_argument('--yaml', action='store_true', help='Output as YAML')
+
+    p = subparsers.add_parser('crypto-orderbook', help='Get orderbook of a crypto')
+    p.add_argument('ticker')
+    p.add_argument('--currency', default='USD', help='Currency')
+    p.add_argument('--yaml', action='store_true', help='Output as YAML')
+
+    p = subparsers.add_parser('crypto-candles', help='Get candlesticks of a crypto')
+    p.add_argument('ticker')
+    p.add_argument('--currency', default='USD', help='Currency')
+    p.add_argument('--granularity', choices=['60', '300', '900', '3600', '21600', '86400'], default='3600', help='Granularity of candlesticks')
+    p.add_argument('--yaml', action='store_true', help='Output as YAML')
+
+    p = subparsers.add_parser('crypto-stats', help='Get stats of a crypto')
+    p.add_argument('ticker')
+    p.add_argument('--currency', default='USD', help='Currency')
+    p.add_argument('--yaml', action='store_true', help='Output as YAML')
+
     parsed = parser.parse_args()
+
+    result = None
+    if parsed.command == 'crypto-price':
+        client = CoinbaseClient(currency=parsed.currency)
+        result = client.get_ticker(parsed.ticker)
+    elif parsed.command == 'crypto-orderbook':
+        client = CoinbaseClient(currency=parsed.currency)
+        result = client.get_orderbook(parsed.ticker)
+    elif parsed.command == 'crypto-candles':
+        client = CoinbaseClient(currency=parsed.currency)
+        result = client.get_candlesticks(parsed.ticker, parsed.granularity)
+    elif parsed.command == 'crypto-stats':
+        client = CoinbaseClient(currency=parsed.currency)
+        result = client.get_stats(parsed.ticker)
+
+    if result is not None:
+        if parsed.yaml:
+            print(yaml.dump(result))
+        else:
+            print(result)
+        return
+
     if not parsed.command:
         parser.print_help()
         print("\n📚 For MVE market help, see: file 'Skills/kalshi-predictions/SKILL.md'")
