@@ -20,7 +20,6 @@ PRODUCTION_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
 # Demo environment for testing
 DEMO_BASE_URL = "https://demo-api.kalshi.co/trade-api/v2"
 
-
 class CoinbaseClient:
     """
     Public Coinbase API Client
@@ -69,7 +68,9 @@ class CoinbaseClient:
         if product is None:
             return None
         response = requests.get(f"{self.base_url}/products/{product["id"]}/candles?granularity={granularity}")
-        return response.json()
+        data = response.json()
+        data.reverse()
+        return data
 
 class KalshiClient:
     """Kalshi API Client with proper RSA-PSS signing"""
@@ -224,6 +225,27 @@ def calculate_depth(orderbook_data, depth_cents=5):
 
     return {"yes_depth": yes_depth, "no_depth": no_depth}
 
+def holt_step(L, T, x, alpha, beta):
+    prevL = L
+    Ln = alpha * x + (1 - alpha) * (L + T)
+    Tn = beta * (Ln - prevL) + (1 - beta) * T
+    return Ln, Tn
+
+def holt_fit(data, alpha, beta):
+    if len(data) < 2:
+        raise ValueError("Need at least 2 data points to initialize Holt's method.")
+    L = data[0]
+    T = data[1] - data[0]
+    for x in data:
+        L, T = holt_step(L, T, x, alpha, beta)
+    return L, T
+
+def predict(data, alpha = 0.28, beta = 0.18, steps = 2):
+    L, T = holt_fit(data, alpha, beta)
+    return [L + h * T for h in range(1, steps + 1)]
+
+
+
 # CLI Commands
 def cmd_hot(client, args):
     """
@@ -290,20 +312,7 @@ def cmd_hot(client, args):
                         "open": c[3],
                         "close": c[4],
                         "volume": c[5]
-                    } for c in candles_1m_response[:15]]
-
-                candles_5m_response = client.coinbase_client.get_candlesticks(crypto_ticker, "300")
-                candles_5m = []
-
-                if candles_5m_response:
-                    candles_5m = [{
-                        "time": c[0],
-                        "low": c[1],
-                        "high": c[2],
-                        "open": c[3],
-                        "close": c[4],
-                        "volume": c[5]
-                    } for c in candles_5m_response[:15]]
+                    } for c in candles_1m_response[-15:]]
 
                 candles_1h_response = client.coinbase_client.get_candlesticks(crypto_ticker, "3600")
                 candles_1h = []
@@ -316,16 +325,34 @@ def cmd_hot(client, args):
                         "open": c[3],
                         "close": c[4],
                         "volume": c[5]
-                    } for c in candles_1h_response[:15]]
+                    } for c in candles_1h_response[-15:]]
+
+                candles_6h_response = client.coinbase_client.get_candlesticks(crypto_ticker, "21600")
+                candles_6h = []
+
+                if candles_6h_response:
+                    candles_6h = [{
+                        "time": c[0],
+                        "low": c[1],
+                        "high": c[2],
+                        "open": c[3],
+                        "close": c[4],
+                        "volume": c[5]
+                    } for c in candles_6h_response[-15:]]
 
                 s["coinbase_ticker"] = coinbase_ticker
                 s["coinbase_stats"] = coinbase_stats
                 s["coinbase_orderbook"] = orderbook
                 s["coinbase_candles"] = {
                     "1m_last_15m": candles_1m,
-                    "5m_last_75m": candles_5m,
-                    "1h_last_15h": candles_1h
+                    "1h_last_15h": candles_1h,
+                    "6h_last_90h": candles_6h
                 }
+                try:
+                    s["coinbase_holt_prediction"] = predict([x.get("close") for x in candles_6h])
+                except Exception as e:
+                    print(f"Error predicting {crypto_ticker}: {e}")
+                    s["coinbase_holt_prediction"] = None
 
     series = [s for s in series if s.get("markets") and len(s.get("markets")) > 0]
 
@@ -351,6 +378,10 @@ def cmd_stats(client, args):
 
     candlesticks = client.request("GET", f"/series/{args.series_ticker}/markets/{args.ticker}/candlesticks?start_ts={int((datetime.now().timestamp() - 900))}&end_ts={int((datetime.now().timestamp()))}&period_interval=1")
     result["candlesticks"] = candlesticks.get("candlesticks", [])
+
+    series = client.request("GET", f"/series/{args.series_ticker}")
+    series = series.get("series", {})
+    result["settlement_sources"] = series.get("settlement_sources", [])
 
     return result
 

@@ -4,7 +4,7 @@
 
 We are in a learning and improvement phase. We want to improve win rate and profit as quickly and reliably as possible. Develop an ironclad strategy for yourself that has above an 80% win rate. The quicker we can profit, the more we can expand our portfolio. Start small and build a reliable foundation for yourself. Scale bets as your account grows./
 
-Your specialization is binary (yes/no) Crypto markets.
+Your specialization is binary (yes/no) Crypto markets. Focus on consistent short-term returns. Ignore markets that have more than a 48hr term.
 
 ## Workspace
 

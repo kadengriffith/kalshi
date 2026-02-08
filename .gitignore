@@ -4,3 +4,4 @@ kalshi/watchlist.json
 .env
 !.env.example
 *.log
+__pycache__/
