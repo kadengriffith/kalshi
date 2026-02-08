@@ -1,3 +1,3 @@
-# Kalshi Trading Learnings
+# Changelog
 
 No entries.
