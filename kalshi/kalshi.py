@@ -43,7 +43,7 @@ class CoinbaseClient:
         product = self.get_product(ticker)
         if product is None:
             return None
-        response = requests.get(f"{self.base_url}/products/{product["id"]}/ticker")
+        response = requests.get(f"{self.base_url}/products/{product.get('id')}/ticker")
         return response.json()
 
     def get_stats(self, ticker: str):
@@ -51,7 +51,7 @@ class CoinbaseClient:
         product = self.get_product(ticker)
         if product is None:
             return None
-        response = requests.get(f"{self.base_url}/products/{product["id"]}/stats")
+        response = requests.get(f"{self.base_url}/products/{product.get('id')}/stats")
         return response.json()
 
     def get_orderbook(self, ticker: str):
@@ -59,7 +59,7 @@ class CoinbaseClient:
         product = self.get_product(ticker)
         if product is None:
             return None
-        response = requests.get(f"{self.base_url}/products/{product["id"]}/book")
+        response = requests.get(f"{self.base_url}/products/{product.get('id')}/book")
         return response.json()
 
     def get_candlesticks(self, ticker: str, granularity: str):
@@ -67,7 +67,7 @@ class CoinbaseClient:
         product = self.get_product(ticker)
         if product is None:
             return None
-        response = requests.get(f"{self.base_url}/products/{product["id"]}/candles?granularity={granularity}")
+        response = requests.get(f"{self.base_url}/products/{product.get('id')}/candles?granularity={granularity}")
         data = response.json()
         data.reverse()
         return data
@@ -151,7 +151,7 @@ class KalshiClient:
         cursor = None
 
         while True:
-            url = f"{base_pagination_url}{"&" if "?" in base_pagination_url else "?"}limit=1000"
+            url = f"{base_pagination_url}{'&' if '?' in base_pagination_url else '?'}limit=1000"
 
             if cursor:
                 url += f"&cursor={cursor}"
@@ -266,7 +266,7 @@ def cmd_hot(client, args):
     series = series[args.start:args.start + args.limit]
 
     for s in series:
-        markets = client.request("GET", f"/markets?series_ticker={s.get("ticker")}&status=open&sort=volume&limit=20")
+        markets = client.request("GET", f"/markets?series_ticker={s.get('ticker')}&status=open&sort=volume&limit=20")
         markets = markets.get("markets", [])
 
         if len(markets) == 0:
@@ -281,12 +281,13 @@ def cmd_hot(client, args):
         filtered_markets.sort(key=lambda x: x.get("volume"), reverse=True)
 
         for m in filtered_markets:
-            m["get_detailed_stats_command"] = f"python3 kalshi/kalshi.py stats --ticker {m.get("ticker")} --series-ticker {s.get("ticker")}"
+            m["get_detailed_stats_command"] = f"python3 kalshi/kalshi.py stats --ticker {m.get('ticker')} --series-ticker {s.get('ticker')}"
 
         s["markets"] = filtered_markets
 
         if args.category == "Crypto":
-            crypto_ticker = [s for s in s.get("tags") if s.lower() != args.frequency.lower()]
+            tags = s.get("tags") or []
+            crypto_ticker = [t for t in tags if t.lower() != args.frequency.lower()]
 
             if len(crypto_ticker) > 0:
                 crypto_ticker = crypto_ticker[0]
@@ -404,7 +405,7 @@ def cmd_buy(client, args):
             print("Error: --price must be between 0 and 1 (exclusive).")
             return
         price_key = "yes_price_dollars" if args.side == "yes" else "no_price_dollars"
-        order_data[price_key] = str(args.price)
+        order_data[price_key] = f"{args.price:.4f}"
 
     return client.request("POST", "/portfolio/orders", order_data)
 
@@ -427,7 +428,7 @@ def cmd_sell(client, args):
             print("Error: --price must be between 0 and 1 (exclusive).")
             return
         price_key = "yes_price_dollars" if args.side == "yes" else "no_price_dollars"
-        order_data[price_key] = str(args.price)
+        order_data[price_key] = f"{args.price:.4f}"
 
     return client.request("POST", "/portfolio/orders", order_data)
 
@@ -438,34 +439,48 @@ def cmd_cancel(client, args):
 def cmd_account(client):
     """
     Get account snapshot (balance, positions, orders, P&L)
-
     https://docs.kalshi.com/api-reference/portfolio/get-balance.md
     https://docs.kalshi.com/api-reference/portfolio/get-positions.md
     https://docs.kalshi.com/api-reference/orders/get-orders.md
-    https://docs.kalshi.com/api-reference/portfolio/get-settlements.md
+    https://docs.kalshi.com/api-reference/portfolio/get-fills.md
     """
-    balance = client.request("GET", "/portfolio/balance")
-    balance = balance.get("balance", {})
+    balance_resp = client.request("GET", "/portfolio/balance")
     positions = client.get_all("/portfolio/positions", "event_positions")
     orders = client.get_all("/portfolio/orders", "orders")
-    settlements = client.get_all("/portfolio/settlements", "settlements")
+    fills = client.get_all("/portfolio/fills", "fills")
 
-    total_cents = 0
-    for s in settlements:
-        yes_total_cost = s.get("yes_total_cost", 0)
-        no_total_cost = s.get("no_total_cost", 0)
-        fee_usd = s.get("fee", 0)
-        value_usd = s.get("value", 0)
-        total_cents += value_usd - yes_total_cost - no_total_cost - fee_usd
+    cash_cents = balance_resp.get("balance", 0)
+    portfolio_value_cents = balance_resp.get("portfolio_value", 0)
+    account_value_dollars = round((cash_cents + portfolio_value_cents) / 100, 2)
+    balance_dollars = {
+        "cash": round(cash_cents / 100, 2),
+        "portfolio_value": round(portfolio_value_cents / 100, 2),
+    }
 
-    total_usd = total_cents / 100
+    market_positions = client.get_all("/portfolio/positions?count_filter=total_traded", "market_positions")
+    total_realized_pnl_centicents = 0
+    total_fees_centicents = 0
+
+    for mp in market_positions:
+        total_realized_pnl_centicents += mp.get("realized_pnl", 0)
+        total_fees_centicents += mp.get("fees_paid", 0)
+
+    total_unrealized_pnl_cents = portfolio_value_cents - cash_cents
+
+    total_realized_pnl_dollars = round(total_realized_pnl_centicents / 10000, 2)
+    total_fees_dollars = round(total_fees_centicents / 10000, 2)
+    total_unrealized_pnl_dollars = round(total_unrealized_pnl_cents / 100, 2)
+    total_pnl_dollars = round(total_realized_pnl_dollars + total_unrealized_pnl_dollars, 2)
+    net_pnl_dollars = round(total_pnl_dollars - total_fees_dollars, 2)
 
     return {
-        "P&L": round(total_usd, 2),
-        "balance": balance,
+        "net_pnl": net_pnl_dollars,
+        "account_value": account_value_dollars,
+        "balance": balance_dollars,
         "positions": positions,
         "orders": orders,
-        "settlements": settlements
+        "fills": fills,
+        "market_positions": market_positions,
     }
 
 def ev_and_edge_scalar(p_win, decimal_odds, stake):
@@ -607,6 +622,7 @@ def bet_edge_all_in_one(p_win, decimal_odds, stake,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Kalshi Prediction Markets CLI")
+    parser.add_argument("--demo", action="store_true", default=False, help="Use demo environment (default False)")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Hot
@@ -649,10 +665,6 @@ if __name__ == "__main__":
     p = subparsers.add_parser("account", help="Get account snapshot")
     p.add_argument("--demo", action="store_true", default=False, help="Use demo environment (default False)")
 
-    # Account
-    p = subparsers.add_parser("kelly_fraction", help="Use the Kelly criterion to calculate the optimal fraction of your portfolio to bet")
-    p.add_argument("--demo", action="store_true", default=False, help="Use demo environment (default False)")
-
     # Edge
     p = subparsers.add_parser("edge", help="Calculate edge metrics for a single bet")
     p.add_argument("--demo", action="store_true", default=False, help="Use demo environment (default False)")
@@ -664,6 +676,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     client = KalshiClient(use_demo=args.demo)
+    result = None
 
     if args.command == "hot":
         result = cmd_hot(client, args)
@@ -680,4 +693,7 @@ if __name__ == "__main__":
     elif args.command == "edge":
         result = bet_edge_all_in_one(args.p_win, args.decimal_odds, args.stake, opening_odds=args.opening_odds, closing_odds=args.closing_odds)
 
-    print(result)
+    if result is not None:
+        print(result)
+    else:
+        parser.print_help()
